@@ -1,0 +1,607 @@
+# Hotel Booking — Integration Plan
+
+Bringing the hotel module from `D:\projects\mydestination` into KSG as a fifth vertical,
+next to food, taxi, quick commerce/medical and service provider.
+
+Source: Express 5 + Mongoose 9 ESM backend (`backend/modules/hotel`), React 19 + Vite
+frontend. Same stack and module system as KSG, so no CommonJS shim (unlike SP).
+
+---
+
+## 0. Ground rules
+
+1. **Port by reading and rewriting, never bulk-copy.** The source repo has had malware
+   injected three times (`mydestination/PROJECT-NOTES.md` §6; commits `6d68826`,
+   `2b751e9`, `37aff0a`). Never copy its `vite.config.js`, `package.json` scripts,
+   `.vscode/`, `public/fonts`, root-level scripts or `backend/.env`. Run
+   `Frontend/scripts/check-source-integrity.mjs` and `Backend/scripts/sourceIntegrity.mjs`
+   after every port batch.
+2. **One mount: `/api/v1/hotel/*`.** The SP legacy delegation is registered last and
+   swallows unprefixed paths like `/bookings` and `/payments`.
+3. **Everything namespaced.** Models `Hotel*`, collections `hotel_*`. Source names
+   `Booking`, `Review`, `Offer`, `Wallet`, `Transaction`, `Partner`, `User`, `Admin`,
+   `Notification`, `Payment` all collide with core, SP or QC.
+4. **Reuse KSG core, don't port source infrastructure.** Users, OTP, JWT, Razorpay,
+   ledger, wallet, uploads, notifications, coupons and settings already exist in
+   `Backend/src/core`. Only hotel *domain* code comes across.
+5. **Behind a kill switch.** `MODULES.HOTEL` on the backend, `VITE_ENABLE_HOTEL` on the
+   frontend, so it can ship dark and be switched on per site.
+
+---
+
+## 1. Target architecture
+
+```
+Backend/src/modules/hotel/
+  models/            HotelProperty, HotelRoomType, HotelAvailability, HotelBooking,
+                     HotelReview, HotelPropertyDocument, HotelPartner, HotelSavedProperty
+  services/          availability, pricing, booking (state machine), settlement,
+                     cancellation, search, notifications, jobs
+  controllers/       public, user, partner, admin
+  routes/            index.js -> /public, /user, /partner, /admin, /payments
+  validators/        zod/joi schemas per endpoint
+  constants.js       enums (property types, inventory types, statuses)
+  tests/
+
+Frontend/src/modules/Hotel/
+  user/      search, listing, property detail, checkout, my stays, saved, reviews
+  partner/   onboarding wizard, dashboard, properties, rooms, inventory calendar,
+             bookings, reviews, earnings
+  admin/     own layout (Pattern A, like SP): dashboard, properties & approvals,
+             bookings, partners, reviews, settings
+  services/  hotelApi.js (axios, contextModule 'hotel')
+```
+
+Alias `@hotel` → `Frontend/src/modules/Hotel` in `vite.config.js` (edit by hand, add
+the alias line only).
+
+---
+
+## 2. Identity and roles
+
+| Source | KSG | Notes |
+|---|---|---|
+| `User` (customers) | **core `users`** (`FoodUser`) | No `hotel_users`. Bookings reference `users._id`. Login is the existing `/v1/auth/user/request-otp` + `verify-otp`. |
+| `User.savedHotels` | `hotel_saved_properties` `{userId, propertyId}` | Unique index on the pair. |
+| `Partner` | **`hotel_partners`** (`HotelPartner`) | New role `HOTEL_PARTNER`, OTP login only (drop the source's password). |
+| `Admin` | core `admins` | Add `'hotel'` to `servicesAccess`; gate with `requireServiceAccess('hotel')`. |
+| `Wallet` (user) | core `CustomerWallet` | One wallet per person across verticals. |
+| `Wallet` (partner/admin) | core ledger + `partner_balances` | See §6. |
+
+**Backend role wiring**
+- `src/core/auth/auth.middleware.js`: `lookupAccount` for `HOTEL_PARTNER` (blocked /
+  deleted / not-approved check on every request — the source only checked approval in
+  the frontend).
+- `src/core/auth/auth.routes.js`: `POST /v1/auth/hotel-partner/request-otp`,
+  `/verify-otp`, both through `consumeOtpQuota` (`core/otp/otpRateLimit.service.js` —
+  add `HOTEL` to its service list).
+- Admin hierarchy: add `HOTEL` to `ADMIN_MODULES`, a `hotel_superadmin` level, and
+  `'hotel'` to `admin.model.js` `servicesAccess` enum, `platformAdmins.service.js`
+  full-access list, `auth.service.js` default/allowed admin services, and
+  `adminAccessPolicy.js` (`ADMIN_SERVICES`, a `HOTEL_ADMIN_RULES` table).
+
+**Frontend**
+- `Frontend/src/services/api/axios.js` `isTokenForModule`: `hotel` → `HOTEL_PARTNER`
+  token for partner screens, `USER` for customer screens, admin token for `/admin/hotel`.
+
+---
+
+## 3. Data models
+
+All `timestamps: true`. Money in rupees as `Number` with 2-decimal rounding in the
+service layer (matching KSG food/QC); paise only at the Razorpay boundary.
+
+### 3.1 `HotelPartner` → `hotel_partners`
+```
+name            String, required
+phone           String, required, unique (last 10 digits)
+email           String, lowercase, sparse unique
+platformUserId  ObjectId ref users        // via ensurePlatformUser, like SP/QC
+status          enum pending|approved|rejected|blocked, default pending
+rejectionReason String
+kyc: {
+  ownerName, aadhaarNumberMasked, aadhaarFront, aadhaarBack,   // private files
+  panNumber, panImage, gstNumber, gstCertificate
+}
+bank: { accountHolder, accountNumberMasked, ifsc, bankName, razorpayFundAccountId }
+address: { line, city, state, pincode, location: GeoJSON Point }
+fcmTokens: { web: [String], app: [String] }
+termsAcceptedAt Date
+approvedAt, approvedBy (ref admins)
+isDeleted       Boolean, default false
+indexes: { phone: 1 } unique, { status: 1, createdAt: -1 }
+```
+
+### 3.2 `HotelProperty` → `hotel_properties`
+```
+partnerId         ObjectId ref HotelPartner, required, index
+name              String, required, trim
+slug              String, unique                   // SEO URLs
+propertyType      enum hotel|resort|villa|homestay|hostel|pg, required
+typeDetails: {
+  hotelCategory   enum budget|premium|luxury
+  starRating      Number 1-5
+  resortType      enum beach|hill|jungle|desert
+  pgType          enum boys|girls|unisex
+  hostelType      enum boys|girls|mixed
+  hostLivesOnProperty Boolean
+}
+suitability       enum couple_friendly|family_friendly|both|none, default none
+description       String                            // declared (source dropped it)
+shortDescription  String, maxlength 200
+contactNumber     String
+address: { line1, area, city, state, pincode, country: 'India', fullAddress }
+location          GeoJSON Point, required          // [lng, lat]
+zoneId            ObjectId ref food_zones          // which KSG zone it falls in
+nearbyPlaces      [{ name, type, distanceKm }]
+coverImage        String, required
+images            [String]
+amenities         [String]                          // from a fixed catalogue (§3.9)
+houseRules        [String]
+checkInTime       String 'HH:mm', default '12:00'
+checkOutTime      String 'HH:mm', default '11:00'
+cancellationPolicy {                                 // enforced, not free text
+  type            enum flexible|moderate|strict|non_refundable, default moderate
+  freeCancelHours Number, default 24
+  refundPercentAfter Number, default 0
+}
+status            enum draft|pending|approved|rejected|suspended, default draft
+rejectionReason   String
+isLive            Boolean, default false            // partner toggle, only if approved
+startingPrice     Number                            // denormalised min room price
+originalPrice     Number
+avgRating         Number, default 0
+totalReviews      Number, default 0
+approvedAt, approvedBy
+indexes:
+  { location: '2dsphere' }
+  { status: 1, isLive: 1, propertyType: 1 }
+  { 'address.city': 1 }
+  { partnerId: 1, createdAt: -1 }
+  text index on name, address.city, address.area
+```
+
+### 3.3 `HotelRoomType` → `hotel_room_types`
+```
+propertyId      ObjectId ref HotelProperty, required, index
+name            String, required
+inventoryType   enum room|bed|entire, required      // derived from propertyType
+roomCategory    enum private|shared|entire
+baseAdults      Number, default 2
+baseChildren    Number, default 0
+maxAdults       Number, required, min 1
+maxChildren     Number, default 0
+bedsPerRoom     Number, default 1                    // used when inventoryType = bed
+totalInventory  Number, required, min 1              // rooms, beds, or 1 for entire
+pricePerNight   Number, required, min 0
+originalPrice   Number
+weekendPrice    Number                               // optional Fri/Sat override
+extraAdultPrice Number, default 0
+extraChildPrice Number, default 0
+mealPlan        enum room_only|breakfast|half_board|full_board, default room_only
+images          [String], validate length >= 3
+amenities       [String]
+isActive        Boolean, default true
+indexes: { propertyId: 1, isActive: 1 }
+```
+Server enforces the source's property-type → inventory-type mapping:
+villa → entire; hotel/resort → room; hostel/pg → bed; homestay → room|entire.
+
+### 3.4 `HotelAvailability` → `hotel_availability_ledger`
+Kept from the source: one ledger for platform bookings, walk-ins, OTA bookings and
+manual blocks.
+```
+propertyId      ObjectId, required
+roomTypeId      ObjectId, required
+source          enum platform|walk_in|external|manual_block, required
+bookingId       ObjectId ref HotelBooking            // when source = platform
+externalPlatform String; externalReference String
+startDate       Date (check-in, 00:00 IST), required
+endDate         Date (check-out, exclusive), required
+units           Number, min 1, required
+notes           String
+createdBy       enum system|partner|admin
+indexes:
+  { roomTypeId: 1, startDate: 1, endDate: 1 }
+  { bookingId: 1 } sparse unique
+```
+
+### 3.5 `HotelInventoryDay` → `hotel_inventory_days` (new — fixes overselling)
+One row per room type per night, holding the booked count. Gives an atomic guard:
+```
+roomTypeId  ObjectId, required
+date        Date (night, 00:00 IST), required
+booked      Number, default 0
+capacity    Number                    // snapshot of totalInventory (× bedsPerRoom)
+priceOverride Number                  // optional per-night rate (seasonal pricing)
+closed      Boolean, default false    // stop-sell
+unique index { roomTypeId: 1, date: 1 }
+```
+Booking reserves each night inside a Mongo transaction with
+`updateOne({roomTypeId, date, $expr: {$lte: [{$add:['$booked', n]}, '$capacity']}}, {$inc: {booked: n}}, {upsert})`;
+if any night fails, the transaction aborts. The ledger stays as the human-readable
+record; `hotel_inventory_days` is the counter the guard runs on. (KSG Mongo is already a
+replica set, so transactions work.)
+
+### 3.6 `HotelBooking` → `hotel_bookings`
+```
+bookingRef      String, unique ('KSGH' + base36), required
+userId          ObjectId ref users, required
+propertyId      ObjectId ref HotelProperty, required
+partnerId       ObjectId ref HotelPartner, required    // denormalised for partner queries
+roomTypeId      ObjectId ref HotelRoomType, required
+zoneId          ObjectId
+snapshot: {                                             // frozen at booking time
+  propertyName, propertyType, roomTypeName, address, coverImage,
+  checkInTime, checkOutTime, cancellationPolicy
+}
+checkIn         Date, required
+checkOut        Date, required
+nights          Number, required
+rooms           Number, default 1, min 1
+guests:         { adults: Number, children: Number }
+guestDetails:   { name, phone, email }
+specialRequests String
+pricing: {
+  roomCharges, extraGuestCharges, subtotal,
+  couponCode, couponDiscount, prepaidDiscount,
+  taxableAmount, gstRate, gstAmount,
+  platformFee, platformFeeGst,
+  total,
+  commissionRate, commissionAmount, commissionGst,
+  partnerPayout
+}
+payment: {
+  mode          enum pay_at_hotel|online|wallet|partial_prepaid, required
+  status        enum pending|paid|partially_paid|refunded|partially_refunded|failed
+  amountPaid, amountDue,
+  walletAmount,                                // CustomerWallet debit
+  razorpayOrderId, razorpayPaymentId,
+  paymentId     ObjectId ref payments           // core payments row
+  expiresAt     Date                            // unpaid hold expiry
+}
+status          enum awaiting_payment|confirmed|checked_in|checked_out|
+                     cancelled|no_show|expired, required
+statusHistory   [{ status, at, by: {role, id}, note }]
+cancellation: { by: enum user|partner|admin|system, reason, at,
+                refundAmount, refundId ref refunds }
+review          ObjectId ref HotelReview
+notificationsSent { checkInReminder, reviewRequest, paymentExpiryWarning }
+source          enum app|web|admin
+indexes:
+  { userId: 1, createdAt: -1 }
+  { partnerId: 1, status: 1, checkIn: 1 }
+  { propertyId: 1, checkIn: 1 }
+  { status: 1, 'payment.expiresAt': 1 }        // expiry job
+```
+Legacy `completed`/`rejected` states dropped; `expired` added for auto-cancelled holds.
+
+### 3.7 `HotelReview` → `hotel_reviews`
+```
+userId      ObjectId ref users, required
+propertyId  ObjectId, required
+bookingId   ObjectId ref HotelBooking, required    // only stayed guests can review
+rating      Number 1-5, required
+subRatings  { cleanliness, location, service, value }
+comment     String, maxlength 2000
+photos      [String]
+reply       { text, at }
+helpfulVotes [ObjectId ref users]
+status      enum pending|approved|rejected, default approved (admin-configurable)
+unique index { bookingId: 1 }                     // one review per stay
+index { propertyId: 1, status: 1, createdAt: -1 }
+```
+`avgRating` / `totalReviews` on the property recomputed in a post-save hook.
+
+### 3.8 `HotelPropertyDocument` → `hotel_property_documents`
+```
+propertyId  ObjectId, required, unique
+documents   [{ type, name, fileUrl (private folder), isRequired, uploadedAt }]
+verificationStatus enum pending|verified|rejected
+adminRemark String; verifiedAt Date; verifiedBy ObjectId
+```
+Required-document rules ported from `backend/config/propertyDocumentRules.js`
+(trade licence; rent agreement for hostel/PG; electricity bill for homestay; plus GST
+certificate if the partner is GST-registered).
+
+### 3.9 Catalogue & settings (no new collection needed)
+- **Amenities catalogue**: a constant list in `constants.js` (Wi-Fi, AC, parking,
+  restaurant, pool, gym, power backup, lift, CCTV, …) with icons, so filters work.
+- **Settings registry** (`core/config/registry.js`, scope `vertical: 'hotel'`, plus
+  zone/partner overrides):
+  `hotel.commissionPercent` (10), `hotel.minCommission` (50),
+  `hotel.paymentHoldMinutes` (30), `hotel.prepaidDiscountPercent` (5),
+  `hotel.prepaidAdvancePercent` (30), `hotel.allowPayAtHotel` (true),
+  `hotel.reviewAutoApprove` (true), `hotel.searchRadiusKm` (50).
+- **Platform fee**: existing `fees.platformFee` / `fees.platformFeeGstRate` via
+  `resolveMasterFees('hotel', zoneId)`.
+- **Coupons**: existing core coupons (`/v1/platform/coupons`) with `vertical: 'hotel'`;
+  add `hotel` to `core/promotions/couponList.service.js` `SOURCES`. No `hotel_offers`.
+
+### 3.10 Dropped from the source
+`HotelUISetting` (white-label demo), source `Wallet`/`Transaction`/`Withdrawal`
+(→ core ledger), `Offer` (→ core coupons), `Otp`, `Notification`, referral models,
+and all root-level debug/seed scripts.
+
+---
+
+## 4. Business logic (rewritten, with source bugs fixed)
+
+### 4.1 Search — `GET /v1/hotel/public/properties`
+Port `getPublicProperties` aggregation: optional `$geoNear` (lat/lng/radius), filters
+for city/area text, property types, amenities (`$all`), suitability, star rating,
+price range, guests (room types with `maxAdults ≥ adults`), dates (exclude properties
+with no room type available for every night — reads `hotel_inventory_days`).
+Sort: relevance, price low/high, rating, distance, newest. Paginated (cursor).
+Only `status: approved`, `isLive: true`, partner `approved`.
+
+### 4.2 Pricing — `services/pricing.service.js` (pure function, unit-tested)
+```
+nightly       = priceOverride ?? (weekend ? weekendPrice : pricePerNight), per night
+roomCharges   = Σ nightly × rooms
+extraGuests   = (extraAdultPrice × extraAdults + extraChildPrice × extraChildren) × nights
+subtotal      = roomCharges + extraGuests
+couponDiscount= core coupon engine (window, min amount, per-user and TOTAL usage limits)
+prepaidDiscount = if mode = partial_prepaid: prepaidDiscountPercent × (subtotal − coupon)
+taxableAmount = subtotal − couponDiscount − prepaidDiscount     // GST AFTER discounts
+gstRate       = slab on per-room-per-night tariff:  ≤ ₹1,000 → 0%,  ≤ ₹7,500 → 5%*, > ₹7,500 → 18%
+gstAmount     = round2(taxableAmount × gstRate)
+platformFee   = resolveMasterFees('hotel', zoneId)  (+ its GST)
+total         = taxableAmount + gstAmount + platformFee + platformFeeGst
+commission    = max(round2(taxableAmount × commissionPercent), minCommission)
+commissionGst = 18% of commission
+partnerPayout = taxableAmount + gstAmount − commission − commissionGst
+```
+\* GST slabs must be confirmed with the client's CA before launch (the source used a
+flat 12% on the pre-discount gross, which is wrong). Keep the slab table in settings,
+not code.
+
+Fixes vs source: capacity validated server-side (`rooms × maxAdults ≥ adults`), room
+type must belong to the property, all client price fields ignored — the server
+recomputes everything, and the checkout shows the server quote.
+
+### 4.3 Booking flow & state machine
+```
+POST /v1/hotel/user/bookings/quote      -> price breakdown (no hold)
+POST /v1/hotel/user/bookings            -> transaction:
+      reserve hotel_inventory_days (atomic guard) + ledger row + booking
+      pay_at_hotel          -> confirmed
+      wallet (full)         -> CustomerWallet debit -> confirmed
+      online/partial_prepaid-> awaiting_payment, Razorpay order, expiresAt = now + hold
+POST /v1/hotel/user/bookings/:id/verify -> Razorpay signature + gateway amount check
+      (SP confirmGatewayPayment pattern) -> recordPayment() -> confirmed
+Razorpay webhook (add 'hotel' source in razorpayWebhook.controller) -> same confirm, idempotent
+
+confirmed   -> checked_in   (partner/admin, on/after check-in date)
+checked_in  -> checked_out  (requires paid unless admin force)
+confirmed   -> no_show      (partner, after check-in day ends)
+awaiting_payment -> expired (job, releases inventory and refunds any wallet part)
+confirmed|awaiting_payment -> cancelled (user/partner/admin, policy below)
+```
+Every transition through one `transition(booking, to, actor)` function with an allowed
+-transitions table, written with an atomic `findOneAndUpdate({_id, status: from})`,
+appended to `statusHistory`, then side effects (inventory, money, notifications).
+Admin actions are allowed (source bug: admins always got 403).
+
+### 4.4 Cancellation & refunds
+Policy from the property's `cancellationPolicy`, evaluated against check-in time in IST:
+- before `freeCancelHours` → full refund; after → `refundPercentAfter`; no-show → 0.
+- Partner/admin cancellations → always full refund to the guest.
+- Refunds: online part via `core/payments/refund.service.initiateRefund` (Razorpay);
+  wallet part back to `CustomerWallet` (idempotent `referenceKey`).
+- Inventory released (decrement `hotel_inventory_days`, delete ledger row).
+
+### 4.5 Settlement (core ledger)
+On `checked_out` (or on `confirmed` for online, configurable), via
+`core/finance/ledger.service.append` with idempotency keys:
+- Paid online/wallet: partner `EARNING +taxableAmount+gst`, `COMMISSION −(commission+gst)`;
+  platform credited commission + platform fee.
+- Pay at hotel: partner `COMMISSION −(commission+gst)` (balance may go negative,
+  recovered from future online payouts).
+- Cancellation / no-show reverses with `REFUND` / `ADJUSTMENT` entries.
+Partner withdrawals reuse the existing settlement/withdrawal flow
+(`core/payments/settlement.service.js`), min amount from settings.
+Add `hotel` to `LEDGER_VERTICALS`, `commissionOverview.service.js` and
+`platformPnl.service.js` so Master finance screens include hotels.
+
+### 4.6 Background jobs (gated `startIntervals` in `server.js`, not node-cron side effects)
+| Every | Job |
+|---|---|
+| 1 min | expire `awaiting_payment` past `expiresAt` → `expired`, release inventory, refund wallet part |
+| 15 min | payment-expiry warning push |
+| 30 min | check-in reminder (~5 h before), review request (after check-out) |
+| daily 03:00 IST | no-show sweep reminder to partners; inventory-day backfill for next 365 days |
+| monthly | partner earnings summary email |
+Guarded by `BACKGROUND_JOBS_ENABLED` and a Redis lock so two processes never double-run.
+
+### 4.7 Notifications
+`sendNotificationToOwner` (FCM) + `recordCustomerNotification({vertical: 'hotel'})` for
+the guest; partner push + SMS on new booking; email confirmation with PDF voucher
+(pdfkit, without the commission line the source leaked to customers). Add `hotel` to
+`notification.model.js` verticals and `customerInbox.js`.
+
+---
+
+## 5. API surface (`/api/v1/hotel`)
+
+**Public**
+| Method | Path |
+|---|---|
+| GET | `/public/properties` (search) |
+| GET | `/public/properties/:slugOrId` |
+| GET | `/public/properties/:id/availability?checkIn&checkOut&adults&children&rooms` |
+| GET | `/public/properties/:id/reviews` |
+| GET | `/public/amenities`, `/public/cities` |
+
+**Customer** (`USER` token)
+| Method | Path |
+|---|---|
+| POST | `/user/bookings/quote` |
+| POST | `/user/bookings` |
+| POST | `/user/bookings/:id/verify-payment` |
+| GET | `/user/bookings?tab=upcoming\|ongoing\|past\|cancelled` |
+| GET | `/user/bookings/:id`, `/user/bookings/:id/voucher` (PDF) |
+| POST | `/user/bookings/:id/cancel` (returns refund preview first via `?preview=1`) |
+| POST | `/user/reviews` · POST `/user/reviews/:id/helpful` |
+| GET/POST/DELETE | `/user/saved` · `/user/saved/:propertyId` |
+
+**Partner** (`HOTEL_PARTNER` token; `/partner/auth/*` open)
+| Method | Path |
+|---|---|
+| POST | `/partner/auth/request-otp`, `/partner/auth/verify-otp` |
+| GET/PUT | `/partner/me` (profile, KYC, bank) |
+| CRUD | `/partner/properties`, `/partner/properties/:id/room-types` |
+| PUT | `/partner/properties/:id/documents` · `/partner/properties/:id/submit` · `/partner/properties/:id/live` |
+| GET/PUT | `/partner/inventory?roomTypeId&from&to` (calendar: prices, stop-sell) |
+| POST/DELETE | `/partner/inventory/blocks` (walk-in / external / manual block) |
+| GET | `/partner/bookings?status&from&to` · `/partner/bookings/:id` |
+| PUT | `/partner/bookings/:id/{check-in,check-out,no-show,mark-paid,cancel}` |
+| GET/POST | `/partner/reviews` · `/partner/reviews/:id/reply` |
+| GET | `/partner/earnings`, `/partner/ledger` · POST `/partner/withdrawals` |
+| GET | `/partner/dashboard` (KPIs: occupancy, ADR, revenue, upcoming arrivals) |
+
+**Admin** (`authMiddleware, requireRoles('ADMIN'), requireServiceAccess('hotel')`)
+| Method | Path |
+|---|---|
+| GET | `/admin/dashboard` |
+| GET/PUT | `/admin/partners`, `/admin/partners/:id/{approve,reject,block}` |
+| GET/PUT | `/admin/properties`, `/admin/properties/:id`, `/admin/properties/:id/{approve,reject,suspend}` |
+| PUT | `/admin/properties/:id/documents/verify` |
+| GET/PUT | `/admin/bookings`, `/admin/bookings/:id/{status,cancel,refund}` |
+| GET/PUT/DELETE | `/admin/reviews`, `/admin/reviews/:id/status` |
+| GET/PUT | `/admin/settings` (proxies the settings registry, vertical `hotel`) |
+
+Uploads use the existing `/v1/uploads/image` and `/v1/uploads/document`; KYC and
+property documents go to private folders (`core/files/privateFiles.js`).
+
+Mount in `src/routes/index.js`, **before** the SP legacy delegation:
+```js
+router.use('/v1/hotel', requireModuleEnabled(MODULES.HOTEL), hotelRouter);
+```
+
+---
+
+## 6. Core files to extend (hardcoded vertical lists)
+
+| File | Change |
+|---|---|
+| `core/modules/moduleRegistry.js` | `MODULES.HOTEL` |
+| `core/payments/models/payment.model.js` | `PAYMENT_VERTICALS`, `PAYER_MODELS`, `SUBJECT_MODELS` |
+| `core/payments/payments.facade.js` | `SUBJECT_BY_VERTICAL`, `PAYER_BY_VERTICAL` |
+| `core/payments/controllers/razorpayWebhook.controller.js` | hotel order source |
+| `core/finance/ledgerEntry.model.js` | `LEDGER_VERTICALS` |
+| `core/finance/commissionOverview.service.js`, `platformPnl.service.js` | `SERVICES` |
+| `core/activity/activity.model.js`, `attachActivityHooks.js`, `identityResolver.js` | hotel hooks |
+| `core/notifications/models/notification.model.js`, `customerInbox.js` | vertical |
+| `core/otp/otpRateLimit.service.js` | `HOTEL` |
+| `core/promotions/couponList.service.js` | `SOURCES` |
+| `core/orders/myOrders.service.js`, `masterOrders.service.js` | read `hotel_bookings` |
+| `core/appServices/appServices.rules.js` | `APP_SERVICES` hotel tile |
+| `core/admin/*` (model enum, hierarchy, access policy, platformAdmins), `core/auth/auth.service.js` | `'hotel'` service access |
+| `core/config/registry.js` | hotel settings keys |
+
+---
+
+## 7. Frontend
+
+**Customer (`/hotel/*`, lazy `HotelApp` in `Frontend/src/app/routes.jsx`)**
+- Home/search: city or "near me", date range, guests & rooms; property-type chips.
+- Listing: filters (price, type, rating, amenities, suitability), map toggle, sort.
+- Property detail: gallery, amenities, room types with live availability and price
+  for the chosen dates, policies, reviews, map.
+- Checkout: guest details, payment mode (pay at hotel / pay now / 30% advance), coupon,
+  wallet, server quote, Razorpay checkout.
+- My stays, booking detail + voucher, cancel with refund preview, write review, saved.
+- Rebuilt in KSG style (navy/saffron/green, the landing page's components), not the
+  source's 1,700-line pages. Landing page: set `href: '/hotel'`, `cta: 'Book a stay'`
+  for the `hotel` entry in `LandingPage/constants/brand.js`; add a Hotels tab next to
+  Rides in `Food/components/user/home/HomeHeader.jsx`.
+
+**Partner (`/hotel/partner/*`)**
+- Onboarding: add `hotel` to `partner/partnerApi.js` `PARTNER_TYPES` and a card on
+  `ChoosePartner.jsx` → hotel partner OTP login → KYC → property wizard.
+- **One** data-driven property wizard (steps: type → basics → location (reuse
+  `MapPinPicker`) → photos → amenities & rules → room types → documents → review &
+  submit), driven by a per-type config. Replaces the source's six ~1,800-line copies.
+- Dashboard (today's arrivals/departures, occupancy, revenue), properties, room types,
+  **inventory calendar** (price + availability + stop-sell per night), bookings
+  (check-in/out, no-show, mark paid), reviews & replies, earnings & withdrawals.
+
+**Admin (`/admin/hotel/*`, Pattern A like SP — own layout, KSG sidebar palette)**
+- Dashboard, partner approvals (KYC viewer), property approvals (documents viewer,
+  approve/reject/suspend), bookings (with admin actions), reviews moderation, settings.
+- Reuse master screens for coupons, finance, notifications and users — no copies.
+- Add a **Hotel** tab to every panel switcher: Food `AdminSidebar.jsx`, Taxi
+  `AdminLayout.jsx`, SP `AdminSidebar.jsx` / `AdminHeader.jsx` / `AdminBottomNav.jsx`.
+- `Frontend/src/config/features.js`: `HOTEL_ENABLED` from `VITE_ENABLE_HOTEL`.
+
+**Flutter**: customer and partner apps get a Hotels section later against the same
+`/v1/hotel` API; publish an API doc (`docs/hotel-api.md`) with request/response examples.
+
+---
+
+## 8. Phases
+
+| # | Phase | Deliverables | Est. |
+|---|---|---|---|
+| 1 | Foundation | `modules/hotel` skeleton, models + indexes, `MODULES.HOTEL`, mount, `HOTEL_PARTNER` role + OTP auth, admin service access, feature flag | 3–4 d |
+| 2 | Partner onboarding & properties | partner KYC, property + room-type CRUD, documents, admin approval APIs, inventory days backfill | 4–5 d |
+| 3 | Search & availability | search aggregation, availability endpoint, inventory guard, calendar APIs | 3 d |
+| 4 | Booking & payments | pricing service (+unit tests), quote/create/verify, Razorpay + webhook, wallet, state machine, cancellation/refunds | 5–6 d |
+| 5 | Money & jobs | ledger settlement, withdrawals, finance/P&L hooks, background jobs, notifications, voucher PDF | 3–4 d |
+| 6 | Frontend — partner | onboarding, wizard, dashboard, inventory calendar, bookings, reviews, earnings | 6–7 d |
+| 7 | Frontend — customer | search, listing, detail, checkout, my stays, reviews, saved; landing + home links | 6–7 d |
+| 8 | Frontend — admin | hotel admin panel, switcher tabs, settings | 3–4 d |
+| 9 | Hardening & launch | integration tests (overbooking race, payment/refund idempotency, expiry), seed demo hotel, load test search, docs, flag on | 3 d |
+
+≈ 6–8 weeks for one developer; backend phases 1–5 and frontend 6–8 can run in parallel
+with two people once phase 1 lands.
+
+---
+
+## 9. Testing
+
+- **Unit**: pricing (GST slabs, coupons, prepaid, min commission), cancellation policy
+  windows (IST boundaries), state-machine transition table.
+- **Concurrency**: 20 parallel bookings for the last room → exactly one succeeds.
+- **Payments**: verify + webhook both firing → one confirmation, one payment row, one
+  ledger entry; amount mismatch rejected; refund idempotency.
+- **Jobs**: expiry releases inventory and refunds wallet part; double-run safe.
+- **Access**: partner can't touch another partner's property; unapproved partner blocked
+  server-side; sub-admin without `hotel` access gets 403.
+- Smoke tests in `Backend/tests/hotel.*.mjs` wired into `npm test`, like `test:sp`.
+
+---
+
+## 10. Data migration (only if live myDestination data must come over)
+
+Script `Backend/scripts/hotel-migrate-from-mydestination.js` (template:
+`sp-migrate-data.js`), dry run by default:
+1. `Partner` → `hotel_partners` (+ `ensurePlatformUser` by phone).
+2. `Property` → `hotel_properties` (status/isLive kept, `description` recovered if
+   present in raw docs, slug generated, zone resolved from location).
+3. `RoomType` → `hotel_room_types`; `AvailabilityLedger` → ledger + rebuild
+   `hotel_inventory_days`.
+4. Customers: match `User.phone` to `users` (create if missing), remap ids.
+5. Future-dated `Booking`s → `hotel_bookings` with a pricing snapshot; past bookings
+   optional (history only, no ledger replay).
+6. `Review` → `hotel_reviews` (only those with a booking).
+7. Images: re-host Cloudinary URLs or keep them as external URLs.
+Partner wallet balances are carried over as a single opening `ADJUSTMENT` ledger entry
+per partner, reconciled by finance before go-live.
+
+---
+
+## 11. Decisions needed from you
+
+1. **Migrate existing myDestination data, or start fresh?** (Changes §10 from optional
+   to a phase.)
+2. **Payment modes at launch**: keep pay-at-hotel and the 30% advance option, or online
+   only? PhonePe is dropped in favour of Razorpay — confirm.
+3. **GST**: confirm the slab table and whether KSG collects GST as the e-commerce
+   operator (Section 9(5)) or the hotel does — this changes the voucher and settlement.
+4. **Property types at launch**: all six (hotel, resort, villa, homestay, hostel, PG) or
+   start with hotel/resort/homestay?
+5. **Settlement timing**: credit partners on check-out (safer) or on confirmation?
+6. **Hotel partners**: separate login (recommended), or reuse the store/restaurant
+   partner portal accounts?
