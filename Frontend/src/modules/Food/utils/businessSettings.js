@@ -9,7 +9,7 @@ import { publicGetOnce } from "@food/api";
 
 const SETTINGS_KEY = 'food_business_settings';
 
-const DEFAULT_COMPANY_NAME = "Quick Drop";
+const DEFAULT_COMPANY_NAME = "KSG";
 
 // Names the backend seeds into a fresh settings document, or that survive from earlier
 // vendor builds. They are placeholders, not choices, so they get replaced by the default.
@@ -26,6 +26,8 @@ const SEEDED_PLACEHOLDER_NAMES = new Set([
   "eqosy",
   "rideon",
   "rydon",
+  "quick drop",
+  "quickdrop",
 ]);
 
 export const normalizeCompanyName = (value) => {
@@ -169,7 +171,7 @@ export const getCachedSettings = () => {
 
 /**
  * Get company name from business settings with fallback
- * @returns {string} Company name or default "Quick Drop"
+ * @returns {string} Company name or default "KSG"
  */
 export const getCompanyName = () => {
   const settings = getCachedSettings();
@@ -178,14 +180,14 @@ export const getCompanyName = () => {
 
 /**
  * Get company name asynchronously (loads if not cached)
- * @returns {Promise<string>} Company name or default "Quick Drop"
+ * @returns {Promise<string>} Company name or default "KSG"
  */
 export const getCompanyNameAsync = async () => {
   try {
     const settings = await loadBusinessSettings();
     return normalizeCompanyName(settings?.companyName);
   } catch (error) {
-    return "Quick Drop";
+    return DEFAULT_COMPANY_NAME;
   }
 };
 

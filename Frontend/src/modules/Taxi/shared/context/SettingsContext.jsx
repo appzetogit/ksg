@@ -204,10 +204,10 @@ export const SettingsProvider = ({ children }) => {
   }, []);
 
   useEffect(() => {
-    let appName = settings.general?.app_name || 'Quick Drop';
+    let appName = settings.general?.app_name || 'KSG';
     const lowerAppName = appName.toLowerCase();
-    if (lowerAppName.includes('eqosy') || lowerAppName.includes('appzeto') || lowerAppName.includes('rideon') || lowerAppName.includes('rydon') || lowerAppName.includes('k9')) {
-      appName = 'Quick Drop';
+    if (lowerAppName.includes('eqosy') || lowerAppName.includes('appzeto') || lowerAppName.includes('rideon') || lowerAppName.includes('rydon') || lowerAppName.includes('k9') || lowerAppName.includes('quick drop')) {
+      appName = 'KSG';
     }
     document.title = appName;
 

@@ -251,7 +251,7 @@ const LegalPage = () => {
 
   useEffect(() => {
     if (content?.title) {
-      document.title = `${content.title} | Quick Drop`;
+      document.title = `${content.title} | KSG`;
     }
   }, [content]);
 

@@ -6,7 +6,7 @@ const ContactPage = () => {
   const navigate = useNavigate();
 
   React.useEffect(() => {
-    document.title = "Contact Us | Quick Drop";
+    document.title = "Contact Us | KSG";
   }, []);
 
   return (

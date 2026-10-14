@@ -98,7 +98,7 @@ export default function UnifiedOTPFastLogin({ viewType = "auth" }) {
   // }, [viewType, navigate, location])
 
   useEffect(() => {
-    document.title = "Login | Quick Drop"
+    document.title = "Login | KSG"
   }, [])
 
   const normalizedPhone = () => {
