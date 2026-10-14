@@ -393,7 +393,7 @@ function setupForegroundNotificationHandler(handler) {
       setTimeout(() => shownNotifications.delete(notificationId), 60000);
     }
 
-    const icon = notification.icon || data.icon || '/truliq-logo.png';
+    const icon = notification.icon || data.icon || '/icon-192.png';
 
     // 1. Play Sound based on type
     try {
@@ -419,7 +419,7 @@ function setupForegroundNotificationHandler(handler) {
           await registration.showNotification(title, {
             body: body,
             icon: icon,
-            badge: '/truliq-logo.png',
+            badge: '/icon-192.png',
             data: data,
             tag: data.notificationId || data.tag || 'truliq-alert',
             renotify: true
@@ -490,7 +490,7 @@ async function initializePushNotifications() {
       const title = payload.title || 'New Notification';
       const body = payload.body || '';
       const notifType = payload.type || 'default';
-      const icon = payload.icon || '/truliq-logo.png';
+      const icon = payload.icon || '/icon-192.png';
 
       // 1. Play sound
       try {
@@ -519,7 +519,7 @@ async function initializePushNotifications() {
               <div className="flex items-start">
                 <div className="flex-shrink-0 pt-0.5">
                   <div className="h-12 w-12 rounded-full bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center shadow-lg">
-                    <img className="h-10 w-10 rounded-full border-2 border-white/50" src={icon} alt="" onError={(e) => e.target.src = '/truliq-logo.png'} />
+                    <img className="h-10 w-10 rounded-full border-2 border-white/50" src={icon} alt="" onError={(e) => e.target.src = '/icon-192.png'} />
                   </div>
                 </div>
                 <div className="ml-3 flex-1">

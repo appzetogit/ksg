@@ -10,7 +10,7 @@ import { useSettings } from "../../Taxi/shared/context/SettingsContext"
 // Fallback only -- the logo an admin uploads in business settings wins. The
 // file path is unchanged because the asset itself still lives there; note that
 // renaming the file would not change the artwork inside it.
-const FALLBACK_LOGO = "/k9-logo.png"
+const FALLBACK_LOGO = "/icon-192.png"
 const COMPANY_NAME = "Quick Drop"
 
 export default function UnifiedOTPFastLogin({ viewType = "auth" }) {

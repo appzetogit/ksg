@@ -530,7 +530,7 @@ function showForegroundNotification(payload = {}) {
           if (registration) {
             registration.showNotification(title, {
               body,
-              icon: "/k9-logo.jpg",
+              icon: "/icon-192.png",
               image,
               tag: notificationKey || undefined,
               data: payload?.data || {},
@@ -540,7 +540,7 @@ function showForegroundNotification(payload = {}) {
           } else {
             new Notification(title, {
               body,
-              icon: "/k9-logo.jpg",
+              icon: "/icon-192.png",
               image,
               tag: notificationKey || undefined,
               requireInteraction: true
@@ -549,7 +549,7 @@ function showForegroundNotification(payload = {}) {
         }).catch(() => {
           new Notification(title, {
             body,
-            icon: "/k9-logo.jpg",
+            icon: "/icon-192.png",
             image,
             tag: notificationKey || undefined,
           });
@@ -557,7 +557,7 @@ function showForegroundNotification(payload = {}) {
       } else {
         new Notification(title, {
           body,
-          icon: "/k9-logo.jpg",
+          icon: "/icon-192.png",
           image,
           tag: notificationKey || undefined,
         });

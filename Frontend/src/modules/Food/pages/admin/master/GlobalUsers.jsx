@@ -98,7 +98,7 @@ export default function GlobalUsers() {
 
   const toggleBlocked = async (u) => {
     const block = u.isActive
-    if (block && !window.confirm(`Block ${u.name || u.phone}? They will be signed out of every Quick Drop app.`)) return
+    if (block && !window.confirm(`Block ${u.name || u.phone}? They will be signed out of every KSG app.`)) return
     setBlockingId(u.id)
     try {
       await platformSettingsAPI.setGlobalUserBlocked(u.id, block)

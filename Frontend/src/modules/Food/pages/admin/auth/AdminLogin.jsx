@@ -16,7 +16,7 @@ import {
 import { Input } from "@food/components/ui/input"
 import { Label } from "@food/components/ui/label"
 import { Eye, EyeOff } from "lucide-react"
-import quickSpicyLogo from "@food/assets/k9-logo.jpg"
+import quickSpicyLogo from "@food/assets/ksg-logo.png"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -33,7 +33,7 @@ export default function AdminLogin() {
   const [error, setError] = useState("")
   const [successMessage, setSuccessMessage] = useState("")
   const [businessLogo, setBusinessLogo] = useState(() => getCachedSettings()?.logo?.url || null)
-  const [companyName, setCompanyName] = useState(() => getCachedSettings()?.companyName || "Quick Drop")
+  const [companyName, setCompanyName] = useState(() => getCachedSettings()?.companyName || "KSG")
   const submittingRef = useRef(false)
 
   const resolvedLogo = activeLogo ||
@@ -42,7 +42,8 @@ export default function AdminLogin() {
     taxiSettings?.customization?.logos?.landing ||
     taxiSettings?.logos?.landing ||
     taxiSettings?.general?.logo ||
-    businessLogo;
+    businessLogo ||
+    quickSpicyLogo;
 
   useEffect(() => {
     const message = location.state?.message
@@ -141,14 +142,15 @@ export default function AdminLogin() {
   }
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-neutral-50 via-gray-100 to-white relative">
+    <div className="min-h-screen bg-linear-to-br from-[#FFF3E6] via-white to-[#E9F8EE] relative">
       <div className="absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute -left-24 -top-24 h-64 w-64 rounded-full bg-neutral-900/5 blur-3xl" />
-        <div className="absolute right-[-80px] bottom-[-80px] h-72 w-72 rounded-full bg-gray-700/5 blur-3xl" />
+        <div className="absolute -left-24 -top-24 h-64 w-64 rounded-full bg-[#FF7A00]/15 blur-3xl" />
+        <div className="absolute right-[-80px] bottom-[-80px] h-72 w-72 rounded-full bg-[#16A34A]/15 blur-3xl" />
       </div>
 
       <div className="flex min-h-screen items-center justify-center px-4 py-12">
-        <Card className="w-full max-w-lg bg-white/90 backdrop-blur border-neutral-200 shadow-2xl">
+        <Card className="w-full max-w-lg overflow-hidden bg-white/90 backdrop-blur border-neutral-200 shadow-2xl">
+          <div className="h-1.5 w-full" style={{ background: "linear-gradient(90deg, #FF7A00 0 33.3%, #ffffff 33.3% 66.6%, #16A34A 66.6% 100%)" }} />
           <CardHeader className="pb-4">
             <div className="flex w-full items-center gap-4 sm:gap-5">
               <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-white ring-1 ring-neutral-200 overflow-hidden p-1.5 shadow-sm">
@@ -161,12 +163,12 @@ export default function AdminLogin() {
                   />
                 ) : (
                   <div className="text-xl font-bold text-gray-900">
-                    {(companyName || "QD").substring(0, 2).toUpperCase()}
+                    {(companyName || "KSG").substring(0, 2).toUpperCase()}
                   </div>
                 )}
               </div>
               <div className="flex flex-col gap-1">
-                <CardTitle className="text-3xl leading-tight text-gray-900">Admin Login</CardTitle>
+                <CardTitle className="text-3xl leading-tight text-[#0B2A6F]">Admin Login</CardTitle>
                 <CardDescription className="text-base text-gray-600">
                   Sign in to access the admin dashboard.
                 </CardDescription>
@@ -245,7 +247,7 @@ export default function AdminLogin() {
 
               <Button
                 type="submit"
-                className="h-12 w-full bg-black text-white transition-colors hover:bg-neutral-900 focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2"
+                className="h-12 w-full bg-[#0B2A6F] text-white transition-colors hover:bg-[#071A47] focus-visible:ring-2 focus-visible:ring-[#FF7A00] focus-visible:ring-offset-2"
                 disabled={isLoading}
               >
                 {isLoading ? "Logging in..." : "Login"}

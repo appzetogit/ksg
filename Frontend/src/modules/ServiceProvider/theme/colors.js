@@ -9,31 +9,31 @@
  * - Worker module: import { workerTheme } from '../../../../theme'
  */
 
-// Truliq LOGO Core Brand Colors
+// KSG logo brand colours. Key names kept for existing callers: teal = navy, yellow = saffron, orange = green.
 const brand = {
-  teal: '#347989',
-  yellow: '#D68F35',
-  orange: '#BB5F36',
-  gradient: 'linear-gradient(135deg, #347989 0%, #D68F35 50%, #BB5F36 100%)',
-  conic: 'conic-gradient(from 0deg, #347989, #D68F35, #BB5F36, #347989)'
+  teal: '#0B2A6F',
+  yellow: '#FF7A00',
+  orange: '#16A34A',
+  gradient: 'linear-gradient(135deg, #0B2A6F 0%, #FF7A00 50%, #16A34A 100%)',
+  conic: 'conic-gradient(from 0deg, #0B2A6F, #FF7A00, #16A34A, #0B2A6F)'
 };
 
 // User Theme Colors
 const userTheme = {
-  backgroundGradient: 'linear-gradient(180deg, #F0FDFA 0%, #F5FAFF 15%, #FFFFFF 30%)',
+  backgroundGradient: 'linear-gradient(180deg, #FFF7ED 0%, #F5FAFF 15%, #FFFFFF 30%)',
   gradient: brand.gradient,
-  headerGradient: 'linear-gradient(135deg, #00a6a6 0%, #008a8a 50%, #006b6b 100%)',
+  headerGradient: 'linear-gradient(135deg, #0B2A6F 0%, #123A8F 50%, #071A47 100%)',
   headerBg: '#EBF8FF',
   button: brand.teal,
   icon: brand.teal,
-  cardShadow: '0 8px 16px -2px rgba(0, 166, 166, 0.15), 0 4px 8px -1px rgba(0, 166, 166, 0.1)',
-  cardBorder: '1px solid rgba(0, 166, 166, 0.15)',
+  cardShadow: '0 8px 16px -2px rgba(11, 42, 111, 0.15), 0 4px 8px -1px rgba(11, 42, 111, 0.1)',
+  cardBorder: '1px solid rgba(11, 42, 111, 0.15)',
   brand: brand
 };
 
 // Vendor Theme Colors
 const vendorTheme = {
-  backgroundGradient: 'linear-gradient(to bottom, rgba(52, 121, 137, 0.03) 0%, rgba(187, 95, 54, 0.02) 10%, #ffffff 20%)',
+  backgroundGradient: 'linear-gradient(to bottom, rgba(11, 42, 111, 0.03) 0%, rgba(255, 122, 0, 0.02) 10%, #ffffff 20%)',
   gradient: brand.gradient,
   headerGradient: brand.teal,
   button: brand.teal,
@@ -43,7 +43,7 @@ const vendorTheme = {
 
 // Worker Theme Colors
 const workerTheme = {
-  backgroundGradient: 'linear-gradient(to bottom, rgba(52, 121, 137, 0.03) 0%, rgba(187, 95, 54, 0.02) 10%, #ffffff 20%)',
+  backgroundGradient: 'linear-gradient(to bottom, rgba(11, 42, 111, 0.03) 0%, rgba(255, 122, 0, 0.02) 10%, #ffffff 20%)',
   gradient: brand.gradient,
   headerGradient: brand.teal,
   button: brand.teal,

@@ -5,7 +5,7 @@ import { motion } from "framer-motion"
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@food/components/ui/card"
 import { Button } from "@food/components/ui/button"
 import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings"
-const quickSpicyLogo = "/k9-logo.jpg"
+const quickSpicyLogo = "/icon-192.png"
 
 export default function Home() {
   const navigate = useNavigate()

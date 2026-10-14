@@ -64,7 +64,7 @@ import { adminSidebarMenu } from "@food/utils/adminSidebarMenu"
 import { masterSidebarMenu } from "@food/utils/masterSidebarMenu"
 import { rulesFor, VERTICAL } from "@food/utils/verticalVocabulary"
 import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings"
-import quickSpicyLogo from "@food/assets/k9-logo.jpg"
+import quickSpicyLogo from "@food/assets/ksg-logo.png"
 import { useSettings } from "../../../Taxi/shared/context/SettingsContext"
 import { useAdminAccess, filterMenuForAccess, hasPanel, isRestricted } from "@food/utils/adminAccess"
 import { SERVICE_PROVIDER_ENABLED } from "@/config/features"
@@ -187,7 +187,7 @@ export const verticalAdminPath = (path) =>
   rebaseAdminPath(path, currentAdminBase(typeof window === "undefined" ? "" : window.location.pathname))
 
 export const getVerticalTitle = (base = "", customName = "") => {
-  const name = (customName || "Quick Drop").trim()
+  const name = (customName || "KSG").trim()
   if (base === "/admin/medical") {
     return name.toLowerCase().endsWith("medical") ? name : `${name} Medical`
   }
@@ -206,9 +206,9 @@ export const getVerticalTitle = (base = "", customName = "") => {
  * exactly how quick-commerce banner uploads ended up in food.
  */
 const VERTICAL_BRANDING = {
-  "/admin/food": { title: "Quick Drop Food", labels: {} },
+  "/admin/food": { title: "KSG Food", labels: {} },
   "/admin/quick-commerce": {
-    title: "Quick Drop Quick",
+    title: "KSG Quick",
     labels: {
       "FOOD MANAGEMENT": "PRODUCT MANAGEMENT",
       "RESTAURANT MANAGEMENT": "SELLER MANAGEMENT",
@@ -245,7 +245,7 @@ const VERTICAL_BRANDING = {
    * pharmacies and the products are medicines.
    */
   "/admin/medical": {
-    title: "Quick Drop Medical",
+    title: "KSG Medical",
     labels: {
       "FOOD MANAGEMENT": "MEDICINE MANAGEMENT",
       "RESTAURANT MANAGEMENT": "PHARMACY MANAGEMENT",
@@ -944,19 +944,19 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
          * fill is easy to miss, and this panel has ~90 destinations to scan.
          */
         .admin-sidebar-root {
-          --sb-surface: #FAF8F5;
+          --sb-surface: #F7F9FD;
           --sb-surface-raised: #FFFFFF;
-          --sb-border: #E8E2D9;
-          --sb-hover: #F1ECE4;
+          --sb-border: #E2E8F3;
+          --sb-hover: #FFF1E3;
 
-          --sb-ink: #1A1A1A;
+          --sb-ink: #0B1B3F;
           /* Warm grey-brown. ~9:1 on --sb-surface, comfortably past AA. */
-          --sb-ink-soft: #5C5247;
+          --sb-ink-soft: #33415C;
           /* Section labels and inactive icons. Darkened from the obvious #8B8177,
              which fell under 4.5:1 on this ground; this sits at ~5.1:1. */
-          --sb-ink-faint: #6E655B;
+          --sb-ink-faint: #5A6680;
 
-          --sb-active-bg: #1A1A1A;
+          --sb-active-bg: #0B2A6F;
           --sb-active-ink: #FFFFFF;
         }
 

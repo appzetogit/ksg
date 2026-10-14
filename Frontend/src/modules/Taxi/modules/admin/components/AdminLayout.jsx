@@ -54,7 +54,7 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import quickSpicyLogo from "@food/assets/k9-logo.jpg";
+import quickSpicyLogo from "@food/assets/ksg-logo.png";
 import { getCachedSettings, loadBusinessSettings, normalizeCompanyName } from "@food/utils/businessSettings";
 import { refreshAdminAccess, useAdminAccess, hasPanel, isRestricted, canOpenPath } from "@food/utils/adminAccess";
 import { SERVICE_PROVIDER_ENABLED } from "@/config/features";
@@ -610,7 +610,7 @@ const AdminLayout = () => {
   const { settings, activeLogo } = useSettings();
   const cachedLogo = useCachedLogo(activeLogo);
   const role = readAdminProfile()?.role || 'superadmin';
-  const adminThemeColor = normalizeHexColor(settings.customization?.admin_theme_color, '#405189');
+  const adminThemeColor = normalizeHexColor(settings.customization?.admin_theme_color, '#0B2A6F');
   const sidebarTextColor = normalizeHexColor(settings.customization?.sidebar_text_color, '#CBD5E1');
   const [isSidebarOpen] = useState(true);
   const [isCollapsed, setCollapsed] = useState(false);
@@ -647,10 +647,10 @@ const AdminLayout = () => {
   const notificationsMenuRef = useRef(null);
   const [adminProfile, setAdminProfile] = useState(() => readAdminProfile());
 
-  const appName = settings.general?.app_name || 'Quick Drop';
+  const appName = settings.general?.app_name || 'KSG';
   const [businessCompanyName, setBusinessCompanyName] = useState(() => {
     const cached = getCachedSettings();
-    return normalizeCompanyName(cached?.companyName) || settings.general?.app_name || 'Quick Drop';
+    return normalizeCompanyName(cached?.companyName) || settings.general?.app_name || 'KSG';
   });
 
   useEffect(() => {
@@ -1433,16 +1433,16 @@ const AdminLayout = () => {
         // The active state inverts to a dark pill. On a light ground a lightly tinted
         // fill is easy to miss, and this rail has a lot of destinations to scan.
         style={{
-          '--sb-surface': '#FAF8F5',
+          '--sb-surface': '#F7F9FD',
           '--sb-surface-raised': '#FFFFFF',
-          '--sb-border': '#E8E2D9',
-          '--sb-hover': '#F1ECE4',
-          '--sb-ink': '#1A1A1A',
+          '--sb-border': '#E2E8F3',
+          '--sb-hover': '#FFF1E3',
+          '--sb-ink': '#0B1B3F',
           // Warm grey-brown, ~9:1 on --sb-surface.
-          '--sb-ink-soft': '#5C5247',
+          '--sb-ink-soft': '#33415C',
           // Section labels, inactive icons and bullets. ~5.1:1 -- past AA.
-          '--sb-ink-faint': '#6E655B',
-          '--sb-active-bg': '#1A1A1A',
+          '--sb-ink-faint': '#5A6680',
+          '--sb-active-bg': '#0B2A6F',
           '--sb-active-ink': '#FFFFFF',
         }}
         className={cn(

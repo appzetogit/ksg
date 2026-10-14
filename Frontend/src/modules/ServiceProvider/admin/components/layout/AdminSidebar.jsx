@@ -25,7 +25,7 @@ import dashboardService from "../../services/dashboardService";
 import { getSettings } from "../../services/settingsService";
 import { getCachedSettings, loadBusinessSettings, normalizeCompanyName } from "@food/utils/businessSettings";
 import { useSettings } from "../../../../Taxi/shared/context/SettingsContext";
-import quickSpicyLogo from "@food/assets/k9-logo.jpg";
+import quickSpicyLogo from "@food/assets/ksg-logo.png";
 
 // Icon mapping for menu items
 const iconMap = {
@@ -137,7 +137,7 @@ const AdminSidebar = ({ isOpen, onClose }) => {
   const [isWorkerMode, setIsWorkerMode] = useState(false);
   const [businessCompanyName, setBusinessCompanyName] = useState(() => {
     const cached = getCachedSettings();
-    return normalizeCompanyName(cached?.companyName) || 'Quick Drop';
+    return normalizeCompanyName(cached?.companyName) || 'KSG';
   });
   const [logoUrl, setLogoUrl] = useState(() => getCachedSettings()?.logo?.url || null);
 
@@ -354,8 +354,8 @@ const AdminSidebar = ({ isOpen, onClose }) => {
           className={`
             flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 cursor-pointer text-sm
             ${active
-              ? "bg-white/10 text-white font-semibold border border-white/15 shadow-sm"
-              : "text-neutral-400 hover:text-white hover:bg-white/5"
+              ? "bg-[#FF7A00] text-white font-semibold border border-[#FF7A00] shadow-sm"
+              : "text-blue-100/70 hover:text-white hover:bg-white/5"
             }
           `}
           onClick={() => {
@@ -366,7 +366,7 @@ const AdminSidebar = ({ isOpen, onClose }) => {
             }
           }}>
           <Icon
-            className={`text-lg flex-shrink-0 ${active ? "text-white" : "text-neutral-400"
+            className={`text-lg flex-shrink-0 ${active ? "text-white" : "text-blue-100/70"
               }`}
           />
           <span className="font-semibold flex-1 text-sm">{item.title}</span>
@@ -397,7 +397,7 @@ const AdminSidebar = ({ isOpen, onClose }) => {
             <motion.div
               animate={{ rotate: isExpanded ? 180 : 0 }}
               transition={{ duration: 0.2 }}>
-              <ChevronDown className="text-neutral-400 text-sm w-4 h-4" />
+              <ChevronDown className="text-blue-100/70 text-sm w-4 h-4" />
             </motion.div>
           )}
         </div>
@@ -411,7 +411,7 @@ const AdminSidebar = ({ isOpen, onClose }) => {
               exit={{ height: 0, opacity: 0 }}
               transition={{ duration: 0.2 }}
               className="overflow-hidden">
-              <div className="ml-4 mt-1 pl-3 border-l border-neutral-800 space-y-1">
+              <div className="ml-4 mt-1 pl-3 border-l border-white/10 space-y-1">
                 {item.children.map((child, index) => {
                   const childRoute = getChildRoute(item.route, child);
                   const isChildActive =
@@ -428,8 +428,8 @@ const AdminSidebar = ({ isOpen, onClose }) => {
                       className={`
                         px-3 py-2 text-xs rounded-lg transition-colors cursor-pointer flex justify-between items-center
                         ${isChildActive
-                          ? "bg-white/10 text-white font-semibold"
-                          : "text-neutral-400 hover:text-white hover:bg-white/5"
+                          ? "bg-[#FF7A00] text-white font-semibold"
+                          : "text-blue-100/70 hover:text-white hover:bg-white/5"
                         }
                       `}>
                       <span>{child}</span>
@@ -459,9 +459,9 @@ const AdminSidebar = ({ isOpen, onClose }) => {
 
   // Sidebar content
   const sidebarContent = (
-    <div className="h-full w-full flex flex-col bg-neutral-950 border-r border-neutral-800/60 overflow-hidden">
+    <div className="h-full w-full flex flex-col bg-[#071A47] border-r border-white/10 overflow-hidden">
       {/* Header Section */}
-      <div className="shrink-0 px-3 py-3 border-b border-neutral-800/60 bg-neutral-900">
+      <div className="shrink-0 px-3 py-3 border-b border-white/10 bg-[#0B2A6F]">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3.5">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-white/5 p-1 transition-all">
@@ -510,14 +510,14 @@ const AdminSidebar = ({ isOpen, onClose }) => {
           <button
             type="button"
             onClick={() => navigate("/admin/food")}
-            className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300 text-neutral-400 hover:text-neutral-200 hover:bg-white/5">
+            className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300 text-blue-100/70 hover:text-neutral-200 hover:bg-white/5">
             <UtensilsCrossed className="w-3.5 h-3.5 text-neutral-500" />
             Food
           </button>
           <button
             type="button"
             onClick={() => navigate("/taxi/admin/dashboard")}
-            className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300 text-neutral-400 hover:text-neutral-200 hover:bg-white/5">
+            className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300 text-blue-100/70 hover:text-neutral-200 hover:bg-white/5">
             <Truck className="w-3.5 h-3.5 text-neutral-500" />
             Taxi
           </button>
@@ -531,14 +531,14 @@ const AdminSidebar = ({ isOpen, onClose }) => {
           <button
             type="button"
             onClick={() => navigate("/admin/quick-commerce")}
-            className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300 text-neutral-400 hover:text-neutral-200 hover:bg-white/5">
+            className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300 text-blue-100/70 hover:text-neutral-200 hover:bg-white/5">
             <ShoppingBasket className="w-3.5 h-3.5 text-neutral-500" />
             Quick
           </button>
           <button
             type="button"
             onClick={() => navigate("/admin/medical")}
-            className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300 text-neutral-400 hover:text-neutral-200 hover:bg-white/5">
+            className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300 text-blue-100/70 hover:text-neutral-200 hover:bg-white/5">
             <Pill className="w-3.5 h-3.5 text-neutral-500" />
             Medical
           </button>
