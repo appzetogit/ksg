@@ -18,3 +18,9 @@ const on = (value) => String(value ?? '').trim().toLowerCase() === 'true';
  * tab in both panel switchers. Off unless VITE_ENABLE_SERVICE_PROVIDER=true.
  */
 export const SERVICE_PROVIDER_ENABLED = on(import.meta.env.VITE_ENABLE_SERVICE_PROVIDER);
+
+/**
+ * The Hotel booking vertical: the /hotel customer and partner screens and the Hotel
+ * tab in the admin panel switchers. Off unless VITE_ENABLE_HOTEL=true.
+ */
+export const HOTEL_ENABLED = on(import.meta.env.VITE_ENABLE_HOTEL);

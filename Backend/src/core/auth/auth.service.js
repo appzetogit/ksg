@@ -293,7 +293,7 @@ export const adminLogin = async (email, password) => {
       password: DEFAULT_CREDENTIALS.adminPassword,
       name: "Quick Drop Admin",
       isActive: true,
-      servicesAccess: ["food", "quickCommerce", "taxi", "serviceProvider"],
+      servicesAccess: ["food", "quickCommerce", "taxi", "serviceProvider", "hotel"],
       adminLevel: "platform_superadmin",
       admin_type: "superadmin",
       permissions: ["*"]
@@ -809,7 +809,7 @@ export const getProfile = async (userId, role) => {
 
 // Every value the model accepts. This list once lacked serviceProvider, so
 // saving a profile quietly removed that access from the admin.
-const ADMIN_SERVICES_ALLOWED = ["food", "quickCommerce", "medical", "taxi", "serviceProvider"];
+const ADMIN_SERVICES_ALLOWED = ["food", "quickCommerce", "medical", "taxi", "serviceProvider", "hotel"];
 
 /** Update admin profile (name, email, phone, profileImage). Only for ADMIN role. */
 export const updateAdminProfile = async (userId, body) => {
@@ -1049,6 +1049,14 @@ export const refreshAccessToken = async (token) => {
     if (!r || r.status === "rejected") {
       await FoodRefreshToken.deleteOne({ token });
       throw new AuthError("This account is not active");
+    }
+  }
+  if (payload?.role === "HOTEL_PARTNER") {
+    const { HotelPartner } = await import("../../modules/hotel/models/hotelPartner.model.js");
+    const h = await HotelPartner.findById(payload.userId).select("status isDeleted").lean();
+    if (!h || h.isDeleted || h.status === "blocked") {
+      await FoodRefreshToken.deleteOne({ token });
+      throw new AuthError("This partner account is not active");
     }
   }
 

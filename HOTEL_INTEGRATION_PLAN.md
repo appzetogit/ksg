@@ -69,16 +69,20 @@ the alias line only).
 | `Wallet` (partner/admin) | core ledger + `partner_balances` | See §6. |
 
 **Backend role wiring**
-- `src/core/auth/auth.middleware.js`: `lookupAccount` for `HOTEL_PARTNER` (blocked /
-  deleted / not-approved check on every request — the source only checked approval in
-  the frontend).
-- `src/core/auth/auth.routes.js`: `POST /v1/auth/hotel-partner/request-otp`,
-  `/verify-otp`, both through `consumeOtpQuota` (`core/otp/otpRateLimit.service.js` —
-  add `HOTEL` to its service list).
-- Admin hierarchy: add `HOTEL` to `ADMIN_MODULES`, a `hotel_superadmin` level, and
-  `'hotel'` to `admin.model.js` `servicesAccess` enum, `platformAdmins.service.js`
-  full-access list, `auth.service.js` default/allowed admin services, and
-  `adminAccessPolicy.js` (`ADMIN_SERVICES`, a `HOTEL_ADMIN_RULES` table).
+- `src/core/auth/auth.middleware.js`: `lookupAccount` for `HOTEL_PARTNER`, checked on
+  every request (the source only checked approval in the frontend). Blocked or deleted
+  → refused; pending/rejected keep access to their own profile to finish onboarding;
+  guest- and money-facing routes add `requireApprovedHotelPartner`.
+  *(Done in phase 1, also in `refreshAccessToken`.)*
+- Partner OTP lives inside the module: `POST /v1/hotel/partner/auth/request-otp` and
+  `/verify-otp` (OTP scope `hotel_partner`, quota service `hotel` in
+  `core/otp/otpRateLimit.service.js`). First verification creates the partner as
+  `pending`. *(Done in phase 1.)*
+- Admin hierarchy: `HOTEL` in `ADMIN_MODULES`, a `hotel_superadmin` level, and
+  `'hotel'` in the `admin.model.js` `servicesAccess` enum, `platformAdmins.service.js`
+  full-access list and `auth.service.js` default/allowed admin services *(done in
+  phase 1)*; `adminAccessPolicy.js` (`ADMIN_SERVICES`, a `HOTEL_ADMIN_RULES` table) for
+  sub-admin permissions comes with the admin phase.
 
 **Frontend**
 - `Frontend/src/services/api/axios.js` `isTokenForModule`: `hotel` → `HOTEL_PARTNER`

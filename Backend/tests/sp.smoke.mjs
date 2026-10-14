@@ -283,8 +283,9 @@ console.log('\n[7] admin hierarchy knows about the new module');
     const platform = { role: 'ADMIN', admin_type: 'superadmin', servicesAccess: ['food', 'taxi', 'serviceProvider'] };
     check('platform superadmin can create an sp_superadmin', () =>
         assert.ok(h.getCreatableAdminLevels(platform).includes(ADMIN_LEVELS.SERVICE_PROVIDER_SUPERADMIN)));
-    check('MODULE_SUPERADMIN_LEVELS covers all three services', () =>
-        assert.equal(Object.keys(MODULE_SUPERADMIN_LEVELS).length, 3));
+    // food, taxi, serviceProvider, hotel
+    check('MODULE_SUPERADMIN_LEVELS covers all four services', () =>
+        assert.equal(Object.keys(MODULE_SUPERADMIN_LEVELS).length, 4));
 }
 
 server.close();

@@ -33,6 +33,7 @@ import spRouter from '../modules/serviceProvider/routes/index.js';
 // were identical. Its models are renamed QC* on qc_* collections so nothing shares a
 // collection with food, and its routes are mounted here rather than on /v1/food.
 import qcRouter from '../modules/quickCommerce/routes/index.js';
+import hotelRouter from '../modules/hotel/routes/index.js';
 // Platform module kill-switch: lets one vertical be taken out of service without
 // restarting the process the other three share.
 import platformModuleRoutes from '../core/modules/module.routes.js';
@@ -200,6 +201,11 @@ router.get('/v1/me/spend', authMiddleware, getMySpendController);
 // /v1/food/*, which master's own food module already owns. Aliasing them would hand
 // food traffic to quick-commerce.
 router.use('/v1/qc', requireModuleEnabled(MODULES.QUICK_COMMERCE), qcRouter);
+
+// ─── Hotel ──────────────────────────────────────────────────────────────────
+// Everything under /v1/hotel; see modules/hotel/routes/index.js. Must stay ahead of the
+// SP legacy delegation below, which would otherwise take /bookings and /payments.
+router.use('/v1/hotel', requireModuleEnabled(MODULES.HOTEL), hotelRouter);
 
 // ─── Service-Provider (Homster) ────────────────────────────────────────────
 // Canonical prefix.

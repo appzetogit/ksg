@@ -23,7 +23,8 @@ const SERVICES = Object.freeze({
     TAXI_USER: 'taxi:user',
     TAXI_DRIVER: 'taxi:driver',
     TAXI_ONBOARDING: 'taxi:onboarding',
-    SERVICE_PROVIDER: 'serviceProvider'
+    SERVICE_PROVIDER: 'serviceProvider',
+    HOTEL: 'hotel'
 });
 
 /**

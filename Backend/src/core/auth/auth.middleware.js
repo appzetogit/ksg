@@ -52,6 +52,10 @@ async function lookupAccount(role, id) {
             const qc = await QCStore.findById(id).select('status').lean();
             if (qc) value = { vertical: 'quickCommerce', status: qc.status };
         }
+    } else if (role === 'HOTEL_PARTNER') {
+        const { HotelPartner } = await import('../../modules/hotel/models/hotelPartner.model.js');
+        const partner = await HotelPartner.findById(id).select('status isDeleted').lean();
+        if (partner && !partner.isDeleted) value = { vertical: 'hotel', status: partner.status };
     }
     accountCache.set(key, { at: Date.now(), value });
     return value;
@@ -93,6 +97,24 @@ export const authMiddleware = (req, res, next) => {
                 }
                 next();
             }).catch(() => sendError(res, 401, 'Invalid user token'));
+            return;
+        }
+        // A hotel partner who is pending or rejected keeps access to their own profile
+        // so they can finish or fix onboarding; anything guest- or money-facing also
+        // requires requireApprovedHotelPartner (modules/hotel/middleware/hotelAuth.js).
+        if (role === 'HOTEL_PARTNER') {
+            if (!mongoose.Types.ObjectId.isValid(userId)) {
+                return sendError(res, 401, 'Invalid token');
+            }
+            lookupAccount(role, userId).then((account) => {
+                if (!account) return sendError(res, 401, 'Account not found');
+                if (account.status === 'blocked') {
+                    return sendError(res, 403, 'This partner account has been blocked. Please contact support.');
+                }
+                req.user.vertical = account.vertical;
+                req.user.accountStatus = account.status;
+                next();
+            }).catch(() => sendError(res, 401, 'Invalid token'));
             return;
         }
         if (role === 'DELIVERY_PARTNER' || role === 'RESTAURANT') {
