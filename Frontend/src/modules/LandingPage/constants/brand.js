@@ -1,4 +1,5 @@
 import { Car, Hotel, ShoppingBasket, UtensilsCrossed, Pill, Wrench } from 'lucide-react'
+import { HOTEL_ENABLED } from '@/config/features'
 
 // Colours lifted from the KSG logo: tricolour saffron / green on a deep navy ring.
 export const KSG = {
@@ -48,6 +49,8 @@ export const SERVICES = [
     icon: Hotel,
     from: '#7C3AED',
     to: '#4338CA',
+    // Linked only on builds with the hotel vertical switched on (VITE_ENABLE_HOTEL).
+    ...(HOTEL_ENABLED ? { href: '/hotel', cta: 'Book a stay' } : {}),
   },
   {
     key: 'grocery',
