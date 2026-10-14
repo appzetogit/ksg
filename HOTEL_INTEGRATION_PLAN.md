@@ -552,7 +552,7 @@ router.use('/v1/hotel', requireModuleEnabled(MODULES.HOTEL), hotelRouter);
 | 6 | Frontend — partner | onboarding, wizard, dashboard, inventory calendar, bookings, reviews, earnings | 6–7 d |
 | 7 | Frontend — customer | search, listing, detail, checkout, my stays, reviews, saved; landing + home links | 6–7 d |
 | 8 | Frontend — admin | hotel admin panel, switcher tabs, settings | 3–4 d |
-| 9 | Hardening & launch | integration tests (overbooking race, payment/refund idempotency, expiry), seed demo hotel, load test search, docs, flag on | 3 d |
+| 9 | Hardening & launch | integration tests (overbooking race, payment/refund idempotency, expiry), fresh demo seed (`seed-hotel.js`, §10), load test search, docs, flag on | 3 d |
 
 ≈ 6–8 weeks for one developer; backend phases 1–5 and frontend 6–8 can run in parallel
 with two people once phase 1 lands.
@@ -573,29 +573,33 @@ with two people once phase 1 lands.
 
 ---
 
-## 10. Data migration (only if live myDestination data must come over)
+## 10. Data: fresh seed, no migration
 
-Script `Backend/scripts/hotel-migrate-from-mydestination.js` (template:
-`sp-migrate-data.js`), dry run by default:
-1. `Partner` → `hotel_partners` (+ `ensurePlatformUser` by phone).
-2. `Property` → `hotel_properties` (status/isLive kept, `description` recovered if
-   present in raw docs, slug generated, zone resolved from location).
-3. `RoomType` → `hotel_room_types`; `AvailabilityLedger` → ledger + rebuild
-   `hotel_inventory_days`.
-4. Customers: match `User.phone` to `users` (create if missing), remap ids.
-5. Future-dated `Booking`s → `hotel_bookings` with a pricing snapshot; past bookings
-   optional (history only, no ledger replay).
-6. `Review` → `hotel_reviews` (only those with a booking).
-7. Images: re-host Cloudinary URLs or keep them as external URLs.
-Partner wallet balances are carried over as a single opening `ADJUSTMENT` ledger entry
-per partner, reconciled by finance before go-live.
+**Decided: nothing is copied from myDestination's database.** No partners, properties,
+customers, bookings, reviews or balances come across; the hotel vertical starts empty
+and is filled by a seed.
+
+Script `Backend/scripts/seed-hotel.js`, written in the same style as
+`seed-ksg.js` (idempotent, dry run by default, `--apply` writes, never deletes):
+1. **Settings**: hotel keys in the settings registry with the defaults from §3.9.
+2. **Demo hotel partner**: approved `hotel_partners` record on phone `9000000010`
+   (OTP 1234 while mock OTP is on), with placeholder KYC clearly marked as demo.
+3. **Demo properties** (approved, live, inside the India zone), one per launch type,
+   e.g. KSG Demo Hotel (Bhopal), KSG Demo Resort, KSG Demo Homestay — each with 2–3
+   room types, prices, amenities, photos (placeholder URLs), policies and documents
+   marked verified.
+4. **Inventory**: `hotel_inventory_days` generated for the next 365 nights.
+5. **Demo booking & review**: one confirmed upcoming booking and one checked-out booking
+   with a review for the existing demo customer (`9000000001`), so the customer,
+   partner and admin screens all have something to show.
+
+Runs as part of phase 9 (and earlier on a dev database for frontend work).
 
 ---
 
 ## 11. Decisions needed from you
 
-1. **Migrate existing myDestination data, or start fresh?** (Changes §10 from optional
-   to a phase.)
+1. ~~Migrate existing myDestination data, or start fresh?~~ **Decided: fresh seed (§10).**
 2. **Payment modes at launch**: keep pay-at-hotel and the 30% advance option, or online
    only? PhonePe is dropped in favour of Razorpay — confirm.
 3. **GST**: confirm the slab table and whether KSG collects GST as the e-commerce
