@@ -56,6 +56,7 @@ import {
   Pill,
   Percent,
   ShieldCheck,
+  BedDouble,
 } from "lucide-react"
 import { cn } from "@food/utils/utils"
 import { Input } from "@food/components/ui/input"
@@ -67,7 +68,7 @@ import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSet
 import quickSpicyLogo from "@food/assets/ksg-logo.png"
 import { useSettings } from "../../../Taxi/shared/context/SettingsContext"
 import { useAdminAccess, filterMenuForAccess, hasPanel, isRestricted } from "@food/utils/adminAccess"
-import { SERVICE_PROVIDER_ENABLED } from "@/config/features"
+import { SERVICE_PROVIDER_ENABLED, HOTEL_ENABLED } from "@/config/features"
 /**
  * Which service tabs this admin may see.
  *
@@ -78,7 +79,7 @@ import { SERVICE_PROVIDER_ENABLED } from "@/config/features"
  */
 const useServiceAccess = () =>
   useMemo(() => {
-    const showAll = { food: true, taxi: true, serviceProvider: true, quickCommerce: true }
+    const showAll = { food: true, taxi: true, serviceProvider: true, quickCommerce: true, hotel: true }
     try {
       const raw = localStorage.getItem("admin_user") || sessionStorage.getItem("admin_user")
       if (!raw) return showAll
@@ -91,6 +92,7 @@ const useServiceAccess = () =>
         taxi: access.includes("taxi"),
         serviceProvider: access.includes("serviceProvider"),
         quickCommerce: access.includes("quickCommerce"),
+        hotel: access.includes("hotel"),
       }
     } catch {
       return showAll
@@ -440,6 +442,7 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
         serviceProvider: SERVICE_PROVIDER_ENABLED && hasPanel(access, "serviceProvider"),
         quickCommerce: hasPanel(access, "quickCommerce"),
         medical: hasPanel(access, "medical"),
+        hotel: HOTEL_ENABLED && hasPanel(access, "hotel"),
       }
     : {
         ...storedAccess,
@@ -447,6 +450,7 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
         // Off on a site that has not switched the module on, whatever the
         // stored session says -- the tab would lead to a route that is absent.
         serviceProvider: SERVICE_PROVIDER_ENABLED && storedAccess.serviceProvider !== false,
+        hotel: HOTEL_ENABLED && storedAccess.hotel !== false,
       }
   const [searchQuery, setSearchQuery] = useState("")
   const [badges, setBadges] = useState({})
@@ -1290,6 +1294,27 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                   )}
                 />
                 Medical
+              </button>
+              )}
+              {/* HOTEL TAB -- per site (config/features.js), like Services. */}
+              {serviceAccess.hotel && (
+              <button
+                type="button"
+                onClick={() => navigate("/admin/hotel/dashboard")}
+                className={cn(
+                  "flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
+                  location.pathname.startsWith("/admin/hotel")
+                    ? "bg-[var(--sb-active-bg)] text-[var(--sb-active-ink)] shadow-[0_2px_8px_rgba(26,26,26,0.18)]"
+                    : "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
+                )}
+              >
+                <BedDouble
+                  className={cn(
+                    "w-3.5 h-3.5",
+                    location.pathname.startsWith("/admin/hotel") ? "text-[var(--sb-active-ink)]" : "text-[var(--sb-ink-faint)]"
+                  )}
+                />
+                Hotel
               </button>
               )}
             </div>

@@ -19,7 +19,8 @@ import {
   FiStar,
   FiShield,
 } from "react-icons/fi";
-import { UtensilsCrossed, Truck, Wrench, ShoppingBasket, Pill, ChevronDown } from "lucide-react";
+import { UtensilsCrossed, Truck, Wrench, ShoppingBasket, Pill, ChevronDown, BedDouble } from "lucide-react";
+import { canOpenHotelPanel } from "@/modules/Hotel/admin/hotelAccess";
 import adminMenu from "../../config/adminMenu.json";
 import dashboardService from "../../services/dashboardService";
 import { getSettings } from "../../services/settingsService";
@@ -542,6 +543,16 @@ const AdminSidebar = ({ isOpen, onClose }) => {
             <Pill className="w-3.5 h-3.5 text-neutral-500" />
             Medical
           </button>
+          {/* Hotel: per site (config/features.js) and per admin access. */}
+          {canOpenHotelPanel() && (
+          <button
+            type="button"
+            onClick={() => navigate("/admin/hotel/dashboard")}
+            className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300 text-blue-100/70 hover:text-neutral-200 hover:bg-white/5">
+            <BedDouble className="w-3.5 h-3.5 text-neutral-500" />
+            Hotel
+          </button>
+          )}
         </div>
       </div>
 
