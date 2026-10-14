@@ -172,10 +172,12 @@ const EditRestaurant = lazy(() => import("@food/pages/admin/restaurant/EditResta
 const AdminLogin = lazy(() => import("@food/pages/admin/auth/AdminLogin"));
 const AdminSignup = lazy(() => import("@food/pages/admin/auth/AdminSignup"));
 const AdminForgotPassword = lazy(() => import("@food/pages/admin/auth/AdminForgotPassword"));
-import { SERVICE_PROVIDER_ENABLED } from "@/config/features";
+import { SERVICE_PROVIDER_ENABLED, HOTEL_ENABLED } from "@/config/features";
 // The Services admin, on for sites that set VITE_ENABLE_SERVICE_PROVIDER
 // (config/features.js). Lazy, so a site with it off never downloads it.
 const SPAdminRoutes = lazy(() => import("@sp/admin/routes"));
+// The Hotel admin, on for sites that set VITE_ENABLE_HOTEL. Same shape as Services.
+const HotelAdminApp = lazy(() => import("@/modules/Hotel/admin/HotelAdminApp"));
 // One admin-accounts screen for every panel (food, quick commerce, medical, taxi).
 // Stock per product size, per store (quick commerce and medical only).
 const StockManager = lazy(() => import("@food/pages/shared/StockManager"));
@@ -415,6 +417,20 @@ export default function AdminRouter() {
             element={
               <ProtectedRoute>
                 <SPAdminRoutes />
+              </ProtectedRoute>
+            }
+          />
+        )}
+
+        {/* HOTEL ADMIN -- Pattern A, exactly like sp/* above: own layout, outside
+            master's AdminLayout, shared auth, on only where VITE_ENABLE_HOTEL=true
+            (the Hotel tab in every panel switcher reads the same flag). */}
+        {HOTEL_ENABLED && (
+          <Route
+            path="hotel/*"
+            element={
+              <ProtectedRoute>
+                <HotelAdminApp />
               </ProtectedRoute>
             }
           />
