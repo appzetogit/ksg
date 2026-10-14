@@ -6,7 +6,7 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "//cwd": "Absolute, not the relative 'Frontend'. A relative cwd resolves against whichever project directory the session happens to be in, and this repo is a clone of D:/projects/master -- so a session opened in the original silently served the ORIGINAL Frontend on this port while appearing to preview this one. Every edit looked like it had no effect.",
-      "cwd": "D:/projects/quick-order/Frontend",
+      "cwd": "D:/projects/ksg/Frontend",
       "port": 5173,
       "env": {
         "VITE_BACKEND_PROXY_TARGET": "http://localhost:5000"
@@ -17,7 +17,7 @@
       "name": "backend",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
-      "cwd": "D:/projects/quick-order/Backend",
+      "cwd": "D:/projects/ksg/Backend",
       "port": 5007
     }
   ]

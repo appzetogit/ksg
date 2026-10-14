@@ -1,33 +1,54 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Menu, X } from 'lucide-react'
-import k9Logo from '../assets/k9-logo.png'
-import { useSettings } from '../../Taxi/shared/context/SettingsContext'
+import { Menu, X, Download } from 'lucide-react'
+import ksgLogo from '../assets/ksg-logo.jpg'
+import { COMPANY } from '../constants/brand'
 
-export default function Navbar({ settings }) {
+const navLinks = [
+  { name: 'Services', href: '#services' },
+  { name: 'How it works', href: '#how' },
+  { name: 'Why KSG', href: '#why' },
+  { name: 'Partner with us', href: '#partners' },
+  { name: 'FAQs', href: '#faq' },
+]
+
+export default function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false)
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-  const { activeLogo } = useSettings()
-  const appLogo = activeLogo || settings?.general?.logo || settings?.customization?.logo || '';
+  const [open, setOpen] = useState(false)
+
   useEffect(() => {
-    const handleScroll = () => setIsScrolled(window.scrollY > 40)
-    window.addEventListener('scroll', handleScroll)
-    return () => window.removeEventListener('scroll', handleScroll)
+    const onScroll = () => setIsScrolled(window.scrollY > 30)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
-  const navLinks = [
-    { name: 'Services', href: '#services' },
-    { name: 'Why Quick Drop', href: '#why-us' },
-    { name: 'Partner With Us', href: '#partners' },
-    { name: 'FAQs', href: '#faq' },
-  ]
-
-  const handleSmoothScroll = (e, targetId) => {
+  const go = (e, target) => {
     e.preventDefault()
-    setIsMobileMenuOpen(false)
-    const el = document.querySelector(targetId)
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    setOpen(false)
+    document.querySelector(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
+
+  const Brand = () => (
+    <a href="#top" onClick={(e) => go(e, '#top')} className="flex items-center gap-3 group">
+      <motion.img
+        src={ksgLogo}
+        alt="KSG logo"
+        className="h-11 w-11 rounded-full object-cover ring-2 ring-white shadow-md"
+        whileHover={{ rotate: 360 }}
+        transition={{ duration: 0.8, ease: 'easeInOut' }}
+      />
+      <span className="leading-tight">
+        <span className="block font-extrabold text-lg tracking-tight text-[#0B2A6F]">
+          <span className="text-[#FF7A00]">K</span>S<span className="text-[#16A34A]">G</span>
+          <span className="ml-1 text-slate-800 font-bold">Sons</span>
+        </span>
+        <span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+          {COMPANY.tagline}
+        </span>
+      </span>
+    </a>
+  )
 
   return (
     <>
@@ -35,111 +56,93 @@ export default function Navbar({ settings }) {
         initial={{ y: -80, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-        className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-400 ${isScrolled
-            ? 'bg-white/80 backdrop-blur-xl shadow-[0_4px_24px_rgba(0,0,0,0.03)] border-b border-slate-200/40 text-slate-900'
-            : 'bg-transparent text-slate-800'
-          }`}
-        style={{ fontFamily: "'Poppins', sans-serif" }}
+        className={`fixed top-0 inset-x-0 z-[100] transition-all duration-300 ${
+          isScrolled
+            ? 'bg-white/85 backdrop-blur-xl shadow-[0_6px_30px_rgba(11,42,111,0.08)]'
+            : 'bg-transparent'
+        }`}
       >
-        <div className="w-full px-6 sm:px-12 lg:px-16">
-          <div className="flex items-center justify-between h-20">
-            {/* Logo */}
-            <a href="#" className="flex items-center gap-3 group">
-              {appLogo ? (
-                <img src={appLogo} alt="Quick Drop" className="h-10 w-auto object-contain" />
-              ) : (
-                <span className="font-black text-xl tracking-tight text-slate-900">
-                  Quick Drop
-                </span>
-              )}
-            </a>
+        <div className="ksg-tricolor-bar h-1 w-full" />
+        <div className="mx-auto max-w-7xl px-4 sm:px-8">
+          <div className="flex h-[72px] items-center justify-between">
+            <Brand />
 
-            {/* Desktop nav */}
             <nav className="hidden lg:flex items-center gap-8">
-              {navLinks.map((link) => (
+              {navLinks.map((l) => (
                 <a
-                  key={link.name}
-                  href={link.href}
-                  onClick={(e) => handleSmoothScroll(e, link.href)}
-                  className="text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors duration-200 relative group"
+                  key={l.name}
+                  href={l.href}
+                  onClick={(e) => go(e, l.href)}
+                  className="relative text-sm font-semibold text-slate-700 hover:text-[#0B2A6F] transition-colors group"
                 >
-                  {link.name}
-                  <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-[#ff6d00] to-[#2563eb] group-hover:w-full transition-all duration-300 rounded-full" />
+                  {l.name}
+                  <span className="absolute -bottom-1.5 left-0 h-0.5 w-0 rounded-full bg-gradient-to-r from-[#FF7A00] to-[#16A34A] transition-all duration-300 group-hover:w-full" />
                 </a>
               ))}
             </nav>
 
-            {/* Mobile toggle */}
-            <button
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="lg:hidden p-2 rounded-xl text-slate-800 hover:bg-slate-100 transition-colors ml-auto"
-            >
-              {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
+            <div className="flex items-center gap-2">
+              <a
+                href="#download"
+                onClick={(e) => go(e, '#download')}
+                className="hidden sm:inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#FF7A00] to-[#E85D04] px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-orange-500/30 transition-transform hover:scale-105 active:scale-95"
+              >
+                <Download className="h-4 w-4" /> Get the App
+              </a>
+              <button
+                onClick={() => setOpen(true)}
+                aria-label="Open menu"
+                className="lg:hidden rounded-xl p-2 text-slate-800 hover:bg-slate-100"
+              >
+                <Menu className="h-6 w-6" />
+              </button>
+            </div>
           </div>
         </div>
       </motion.header>
 
-      {/* Global CSS Style tag injection */}
-      <style dangerouslySetInnerHTML={{
-        __html: `
-        @keyframes k9-glow-pulse {
-          0%, 100% {
-            transform: scale(1);
-            box-shadow: 0 4px 14px rgba(255, 81, 0, 0.2);
-          }
-          50% {
-            transform: scale(1.03);
-            box-shadow: 0 6px 20px rgba(29, 78, 216, 0.4);
-          }
-        }
-        .k9-btn-glow-pulse {
-          background: linear-gradient(135deg, #ff5100, #e11d48, #1d4ed8);
-          background-size: 200% 200%;
-          animation: k9-glow-pulse 3s infinite ease-in-out;
-          transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        .k9-btn-glow-pulse:hover {
-          background-position: right center;
-          transform: translateY(-2px) scale(1.05);
-          box-shadow: 0 8px 25px rgba(225, 29, 72, 0.45);
-        }
-      `}} />
-
-      {/* Mobile drawer */}
       <AnimatePresence>
-        {isMobileMenuOpen && (
+        {open && (
           <>
             <motion.div
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-[98] lg:hidden"
+              onClick={() => setOpen(false)}
+              className="fixed inset-0 z-[101] bg-[#071A47]/40 backdrop-blur-sm lg:hidden"
             />
-            <motion.div
+            <motion.aside
               initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 30, stiffness: 250 }}
-              className="fixed right-0 top-0 bottom-0 w-80 z-[100] p-8 flex flex-col lg:hidden shadow-2xl border-l border-slate-100"
-              style={{ background: '#ffffff', fontFamily: "'Poppins', sans-serif" }}
+              transition={{ type: 'spring', damping: 30, stiffness: 260 }}
+              className="fixed right-0 top-0 bottom-0 z-[102] flex w-[85%] max-w-xs flex-col bg-white p-6 shadow-2xl lg:hidden"
             >
-              <div className="flex items-center justify-between mb-10">
-                {settings?.logo_url ? (
-                  <img src={settings.logo_url} alt="Quick Drop" className="h-10 w-auto object-contain" />
-                ) : (
-                  <span className="font-black text-xl text-slate-900">Quick <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#ff5100] via-[#e11d48] via-[#1d4ed8] to-[#10b981]">Drop</span></span>
-                )}
-                <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 rounded-xl text-slate-800 hover:bg-slate-100">
-                  <X className="w-5 h-5" />
+              <div className="mb-10 flex items-center justify-between">
+                <Brand />
+                <button onClick={() => setOpen(false)} aria-label="Close menu" className="rounded-xl p-2 hover:bg-slate-100">
+                  <X className="h-5 w-5" />
                 </button>
               </div>
-              <div className="flex flex-col gap-6 flex-1 text-left">
-                {navLinks.map((link) => (
-                  <a key={link.name} href={link.href} onClick={(e) => handleSmoothScroll(e, link.href)}
-                    className="text-lg font-bold text-slate-700 hover:text-slate-900 transition-colors">
-                    {link.name}
-                  </a>
+              <div className="flex flex-col gap-2">
+                {navLinks.map((l, i) => (
+                  <motion.a
+                    key={l.name}
+                    href={l.href}
+                    onClick={(e) => go(e, l.href)}
+                    initial={{ x: 30, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    transition={{ delay: 0.05 * i + 0.1 }}
+                    className="rounded-xl px-3 py-3 text-lg font-bold text-slate-800 hover:bg-orange-50 hover:text-[#E85D04]"
+                  >
+                    {l.name}
+                  </motion.a>
                 ))}
               </div>
-            </motion.div>
+              <a
+                href="#download"
+                onClick={(e) => go(e, '#download')}
+                className="mt-auto inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#FF7A00] to-[#E85D04] px-5 py-3 font-bold text-white"
+              >
+                <Download className="h-4 w-4" /> Get the App
+              </a>
+            </motion.aside>
           </>
         )}
       </AnimatePresence>

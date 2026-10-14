@@ -1,68 +1,67 @@
 import React, { useEffect, useState, lazy, Suspense } from 'react'
 import Lenis from 'lenis'
+import { MotionConfig, motion, useScroll, useSpring } from 'framer-motion'
 import Navbar from './components/Navbar'
 import Hero from './components/Hero'
+import ServiceMarquee from './components/ServiceMarquee'
 import api from '../Taxi/shared/api/axiosInstance'
+import { COMPANY } from './constants/brand'
+import './landing.css'
 
-const Ecosystem = lazy(() => import('./components/Ecosystem'))
 const Services = lazy(() => import('./components/Services'))
+const HowItWorks = lazy(() => import('./components/HowItWorks'))
 const WhyUs = lazy(() => import('./components/WhyUs'))
-const Showcase = lazy(() => import('./components/Showcase'))
-const VideoSection = lazy(() => import('./components/VideoSection'))
 const Partners = lazy(() => import('./components/Partners'))
 const FAQ = lazy(() => import('./components/FAQ'))
+const AppDownload = lazy(() => import('./components/AppDownload'))
 const Footer = lazy(() => import('./components/Footer'))
+
+function ScrollProgress() {
+  const { scrollYProgress } = useScroll()
+  const scaleX = useSpring(scrollYProgress, { stiffness: 120, damping: 25 })
+  return (
+    <motion.div
+      style={{ scaleX }}
+      className="fixed left-0 right-0 top-0 z-[110] h-1 origin-left bg-gradient-to-r from-[#FF7A00] via-[#0B2A6F] to-[#16A34A]"
+    />
+  )
+}
 
 export default function LandingPage() {
   const [landingSettings, setLandingSettings] = useState(null)
-  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Dynamic SEO Title & Meta tags for better discoverability
-    document.title = "Quick Drop - All-in-One Super-App for Rides, Food & Logistics"
+    document.title = `KSG - ${COMPANY.tagline} | ${COMPANY.hindiTitle}`
 
-    // Find or create meta description tag
     let metaDesc = document.querySelector('meta[name="description"]')
     if (!metaDesc) {
       metaDesc = document.createElement('meta')
       metaDesc.name = 'description'
       document.head.appendChild(metaDesc)
     }
-    metaDesc.setAttribute('content', 'Quick Drop is the ultimate multi-service super-app for Ride Hailing (Taxi & Shares), Food & Dining Delivery, secure Courier Parcels, Airport Transfers, Hourly rentals, and Logistics cargo.')
+    metaDesc.setAttribute(
+      'content',
+      `${COMPANY.name}: one app for cab, bike & auto rides, hotel booking, grocery, food & tiffin delivery, medicines, and electricians, plumbers and home services.`
+    )
 
-    // Fetch dynamic landing settings
-    const fetchLandingSettings = async () => {
-      try {
-        const res = await api.get('/common/landing-page/settings')
-        if (res?.success && res?.data) {
-          setLandingSettings(res.data)
-        }
-      } catch (err) {
-        console.error('Error loading landing page settings:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchLandingSettings()
+    // Admin-editable FAQs.
+    api.get('/common/landing-page/settings')
+      .then((res) => { if (res?.success && res?.data) setLandingSettings(res.data) })
+      .catch((err) => console.error('Error loading landing page settings:', err))
 
-    // Smooth scrolling using Lenis (desktop only to prevent heavy execution on mobile)
+    // Smooth scrolling on desktop only; it is heavy on low-end phones.
     let lenis = null
     let rafId = null
-
     if (window.innerWidth >= 768) {
       lenis = new Lenis({
-        duration: 1.4,
+        duration: 1.2,
         easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
         smoothWheel: true,
-        wheelMultiplier: 1.0,
-        touchMultiplier: 1.5,
       })
-
       const raf = (time) => {
         lenis?.raf(time)
         rafId = requestAnimationFrame(raf)
       }
-
       rafId = requestAnimationFrame(raf)
     }
 
@@ -73,73 +72,29 @@ export default function LandingPage() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-white text-gray-900 antialiased overflow-x-clip" style={{ fontFamily: "'Poppins', system-ui, sans-serif", WebkitFontSmoothing: 'antialiased' }}>
-      {/* Navigation Header */}
-      <Navbar settings={landingSettings} />
-
-      {/* Overlapping Hero & Ecosystem Container */}
-      <div className="relative">
-        {/* Hero Section - Base Stacking Panel */}
-        <div className="sticky top-0 z-10 bg-[#FAFBFC] w-full h-screen overflow-hidden">
-          <Hero settings={landingSettings} />
-        </div>
-
-        {/* Unified Services Selector Ecosystem - Slides over Hero with a nice shadow */}
-        <div className="relative z-20 bg-white shadow-[0_-20px_50px_rgba(0,0,0,0.06)]">
+    <MotionConfig reducedMotion="user">
+      <div
+        className="min-h-screen overflow-x-clip bg-white text-slate-900 antialiased"
+        style={{ fontFamily: "'Poppins', system-ui, sans-serif" }}
+      >
+        <ScrollProgress />
+        <Navbar />
+        <main>
+          <Hero />
+          <ServiceMarquee />
           <Suspense fallback={null}>
-            <Ecosystem settings={landingSettings} />
+            <Services />
+            <HowItWorks />
+            <WhyUs />
+            <Partners />
+            <FAQ settings={landingSettings} />
+            <AppDownload />
           </Suspense>
-        </div>
-      </div>
-
-      {/* Key Super-App Services */}
-      <div className="relative z-20 bg-slate-50">
+        </main>
         <Suspense fallback={null}>
-          <Services settings={landingSettings} />
+          <Footer />
         </Suspense>
       </div>
-
-      {/* Platform Value Propositions & Count Stats */}
-      <div className="relative z-20 bg-white">
-        <Suspense fallback={null}>
-          <WhyUs settings={landingSettings} />
-        </Suspense>
-      </div>
-
-      {/* Premium Fleet Showcase - Dark theme managed internally */}
-      <div className="relative z-20">
-        <Suspense fallback={null}>
-          <Showcase settings={landingSettings} />
-        </Suspense>
-      </div>
-
-      {/* Dynamic Video Section */}
-      <div className="relative z-20 bg-slate-950 text-white">
-        <Suspense fallback={null}>
-          <VideoSection settings={landingSettings} />
-        </Suspense>
-      </div>
-
-      {/* Driver and Merchant Partners Portals */}
-      <div className="relative z-20 bg-slate-950">
-        <Suspense fallback={null}>
-          <Partners settings={landingSettings} />
-        </Suspense>
-      </div>
-
-      {/* Frequently Asked Questions */}
-      <div className="relative z-20 bg-slate-50">
-        <Suspense fallback={null}>
-          <FAQ settings={landingSettings} />
-        </Suspense>
-      </div>
-
-      {/* SEO Optimized Footer Links */}
-      <div className="relative z-20 bg-slate-950 text-white">
-        <Suspense fallback={null}>
-          <Footer settings={landingSettings} />
-        </Suspense>
-      </div>
-    </div>
+    </MotionConfig>
   )
 }

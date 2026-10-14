@@ -1,0 +1,82 @@
+/* KSG landing page animations. Scoped with a ksg- prefix so nothing leaks into the apps. */
+
+@keyframes ksg-spin { to { transform: rotate(360deg); } }
+@keyframes ksg-spin-rev { to { transform: rotate(-360deg); } }
+
+@keyframes ksg-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-14px); }
+}
+
+@keyframes ksg-pulse-ring {
+  0% { transform: scale(0.85); opacity: 0.55; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+
+@keyframes ksg-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@keyframes ksg-shimmer {
+  from { background-position: 0% 50%; }
+  to { background-position: 200% 50%; }
+}
+
+@keyframes ksg-blob {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(40px, -30px) scale(1.08); }
+  66% { transform: translate(-30px, 25px) scale(0.95); }
+}
+
+@keyframes ksg-rise {
+  0% { transform: translateY(0); opacity: 0; }
+  10% { opacity: 0.9; }
+  100% { transform: translateY(-110vh); opacity: 0; }
+}
+
+.ksg-orbit { animation: ksg-spin 40s linear infinite; }
+/* Each orbiting badge counter-rotates so its icon and label stay upright. */
+.ksg-orbit-item { animation: ksg-spin-rev 40s linear infinite; }
+.ksg-orbit:hover, .ksg-orbit:hover .ksg-orbit-item { animation-play-state: paused; }
+
+.ksg-ring-dash { animation: ksg-spin 60s linear infinite; }
+.ksg-ring-dash-rev { animation: ksg-spin-rev 30s linear infinite; }
+.ksg-float { animation: ksg-float 6s ease-in-out infinite; }
+.ksg-pulse::before,
+.ksg-pulse::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 2px solid currentColor;
+  animation: ksg-pulse-ring 3s ease-out infinite;
+}
+.ksg-pulse::after { animation-delay: 1.5s; }
+
+.ksg-marquee { animation: ksg-marquee 35s linear infinite; }
+.ksg-marquee-wrap:hover .ksg-marquee { animation-play-state: paused; }
+
+.ksg-shimmer-text {
+  background-image: linear-gradient(90deg, #FF7A00, #E85D04, #0B2A6F, #16A34A, #FF7A00);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: ksg-shimmer 6s linear infinite;
+}
+
+.ksg-blob { animation: ksg-blob 18s ease-in-out infinite; }
+.ksg-particle { animation: ksg-rise linear infinite; }
+
+.ksg-tricolor-bar {
+  background: linear-gradient(90deg, #FF7A00 0 33.33%, #ffffff 33.33% 66.66%, #16A34A 66.66% 100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ksg-orbit, .ksg-orbit-item, .ksg-ring-dash, .ksg-ring-dash-rev, .ksg-float,
+  .ksg-marquee, .ksg-shimmer-text, .ksg-blob, .ksg-particle,
+  .ksg-pulse::before, .ksg-pulse::after {
+    animation: none !important;
+  }
+}

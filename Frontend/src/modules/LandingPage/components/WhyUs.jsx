@@ -1,107 +1,96 @@
 import React, { useEffect, useRef } from 'react'
-import { gsap } from 'gsap'
-import { ScrollTrigger } from 'gsap/ScrollTrigger'
-import { ShieldCheck, Clock, Users, TrendingUp } from 'lucide-react'
+import { motion, useInView, animate } from 'framer-motion'
+import { ShieldCheck, IndianRupee, MapPinned, Headphones, BadgeCheck, Zap } from 'lucide-react'
+import SectionHeading from './SectionHeading'
 
-gsap.registerPlugin(ScrollTrigger)
+const REASONS = [
+  { icon: ShieldCheck, title: 'Trusted & verified', desc: 'Every captain, store and professional is verified before they join.' },
+  { icon: IndianRupee, title: 'Honest pricing', desc: 'Clear prices up front. No hidden charges, ever.' },
+  { icon: MapPinned, title: 'Live tracking', desc: 'Follow your ride, order or professional in real time.' },
+  { icon: Zap, title: 'Fast service', desc: 'Quick pickups and quick deliveries across your city.' },
+  { icon: Headphones, title: 'Always here', desc: 'Real people ready to help you around the clock.' },
+  { icon: BadgeCheck, title: 'Made for Bharat', desc: 'Built in India, for every Indian household.' },
+]
 
-const props = [
-  {
-    title: 'Safety First, Always',
-    description: 'Every driver undergoes strict criminal background verification and vehicle safety checkouts before joining the platform.',
-    tagColor: '#10b981',
-    icon: ShieldCheck
-  },
-  {
-    title: '24/7 Client Dispatch',
-    description: 'Need a late-night ride or order help? Access our instant chat support panel directly from the app dashboard.',
-    tagColor: '#ff5100',
-    icon: Clock
-  },
-  {
-    title: 'Fair Payouts & Rates',
-    description: 'Vibrant local networks, competitive fare calculations, and low platform commission rates keep our riders and providers happy.',
-    tagColor: '#e11d48',
-    icon: Users
-  },
-  {
-    title: 'Rapid City Expansion',
-    description: 'Already in 15+ cities and growing fast — we onboard new markets monthly with localized support and operations teams.',
-    tagColor: '#1d4ed8',
-    icon: TrendingUp
-  },
+function Counter({ to, suffix = '' }) {
+  const ref = useRef(null)
+  const inView = useInView(ref, { once: true })
+
+  useEffect(() => {
+    if (!inView || !ref.current) return
+    const controls = animate(0, to, {
+      duration: 1.6,
+      ease: 'easeOut',
+      onUpdate: (v) => { if (ref.current) ref.current.textContent = `${Math.round(v)}${suffix}` },
+    })
+    return () => controls.stop()
+  }, [inView, to, suffix])
+
+  return <span ref={ref}>0{suffix}</span>
+}
+
+const STATS = [
+  { value: 6, suffix: '+', label: 'Services' },
+  { value: 1, suffix: '', label: 'App for everything' },
+  { value: 24, suffix: '×7', label: 'Support' },
 ]
 
 export default function WhyUs() {
-  const sectionRef = useRef(null)
-  const headingRef = useRef(null)
-
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      gsap.from(headingRef.current?.children, {
-        y: 30, opacity: 0, duration: 0.7, stagger: 0.1, ease: 'power2.out',
-        scrollTrigger: { trigger: headingRef.current, start: 'top 85%', once: true }
-      })
-    }, sectionRef)
-    return () => ctx.revert()
-  }, [])
-
   return (
-    <section id="why-us" ref={sectionRef} className="pt-10 pb-12 overflow-hidden relative border-t border-slate-200/60 bg-slate-50" style={{ fontFamily: "'Poppins', sans-serif" }}>
-      {/* Dot grid pattern */}
-      <div className="absolute inset-0 opacity-[0.015] pointer-events-none"
-        style={{ backgroundImage: 'radial-gradient(rgba(0,0,0,0.2) 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
-      <div className="absolute top-0 left-1/4 w-[500px] h-[300px] rounded-full bg-[#ff5100]/[0.025] blur-[100px] pointer-events-none" />
-      <div className="absolute bottom-0 right-1/4 w-[400px] h-[300px] rounded-full bg-[#1d4ed8]/[0.025] blur-[120px] pointer-events-none" />
+    <section id="why" className="relative scroll-mt-20 overflow-hidden bg-[#071A47] py-20 text-white sm:py-28">
+      {/* Slow-turning chakra watermark */}
+      <svg className="ksg-ring-dash pointer-events-none absolute -right-40 -top-40 h-[520px] w-[520px] opacity-[0.07]" viewBox="0 0 100 100" aria-hidden>
+        <circle cx="50" cy="50" r="46" fill="none" stroke="white" strokeWidth="2" />
+        <circle cx="50" cy="50" r="6" fill="white" />
+        {Array.from({ length: 24 }).map((_, i) => (
+          <line key={i} x1="50" y1="50" x2="50" y2="6" stroke="white" strokeWidth="0.9" transform={`rotate(${i * 15} 50 50)`} />
+        ))}
+      </svg>
+      <div className="pointer-events-none absolute -bottom-32 -left-32 h-96 w-96 rounded-full bg-[#FF7A00]/25 blur-[120px]" />
+      <div className="pointer-events-none absolute bottom-0 right-1/4 h-80 w-80 rounded-full bg-[#16A34A]/20 blur-[120px]" />
 
-      <div className="max-w-7xl mx-auto px-6 relative z-10">
+      <div className="relative mx-auto max-w-7xl px-4 sm:px-8">
+        <SectionHeading dark eyebrow="Why KSG" title={<>Built on <span className="text-[#FBBF24]">trust</span>. Driven by service.</>} />
 
-        {/* Header */}
-        <div ref={headingRef} className="text-center max-w-3xl mx-auto mb-10 space-y-3">
-          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 mb-1">Why Choose Us</p>
-          <h3 className="text-3xl sm:text-5xl font-black text-slate-900 tracking-tight leading-tight">
-            A Unified Ecosystem{' '}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#ff5100] via-[#e11d48] via-[#1d4ed8] to-[#10b981]">
-              Built for Modern Commute
-            </span>
-          </h3>
-          <p className="text-slate-500 leading-relaxed text-sm sm:text-base max-w-xl mx-auto font-medium">
-            We started with a simple vision: to build an on-demand delivery and transportation service that benefits everyone — riders, providers, kitchens, and cargo.
-          </p>
+        <div className="mx-auto mt-12 grid max-w-3xl grid-cols-3 gap-4">
+          {STATS.map((s, i) => (
+            <motion.div
+              key={s.label}
+              initial={{ opacity: 0, scale: 0.8 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              viewport={{ once: true }}
+              transition={{ delay: i * 0.15, type: 'spring', stiffness: 120 }}
+              className="rounded-2xl border border-white/10 bg-white/5 p-4 text-center backdrop-blur sm:p-6"
+            >
+              <div className="text-3xl font-black text-[#FBBF24] sm:text-5xl">
+                <Counter to={s.value} suffix={s.suffix} />
+              </div>
+              <div className="mt-1 text-xs font-semibold text-blue-100/80 sm:text-sm">{s.label}</div>
+            </motion.div>
+          ))}
         </div>
 
-        {/* Horizontal Auto-Scrolling Marquee */}
-        <div className="relative w-full overflow-hidden py-2 pointer-events-auto">
-          <div className="absolute left-0 top-0 bottom-0 w-20 bg-gradient-to-r from-slate-50 to-transparent z-20 pointer-events-none" />
-          <div className="absolute right-0 top-0 bottom-0 w-20 bg-gradient-to-l from-slate-50 to-transparent z-20 pointer-events-none" />
-
-          <div
-            className="flex gap-5 animate-scroll hover:[animation-play-state:paused] w-max select-none"
-            style={{ animationDuration: '28s' }}
-          >
-            {[...props, ...props, ...props].map((prop, idx) => {
-              const Icon = prop.icon
-              return (
-                <div
-                  key={idx}
-                  className="w-[360px] shrink-0 whitespace-normal bg-white rounded-[20px] border border-slate-200/80 hover:border-slate-300 hover:shadow-md transition-all duration-300 text-left group overflow-hidden relative p-6"
-                >
-                  {/* Top accent strip */}
-                  <div className="absolute top-0 left-0 right-0 h-[3px] rounded-t-[20px]"
-                    style={{ background: `linear-gradient(90deg, ${prop.tagColor}, transparent)` }} />
-
-                  <div className="flex items-center gap-2.5 mb-2">
-                    <Icon className="w-5 h-5 shrink-0" style={{ color: prop.tagColor }} />
-                    <h4 className="text-sm font-black text-slate-900"
-                      style={{ color: prop.tagColor }}>{prop.title}</h4>
-                  </div>
-                  <p className="text-slate-500 text-xs sm:text-sm leading-relaxed font-medium">{prop.description}</p>
-                </div>
-              )
-            })}
-          </div>
+        <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {REASONS.map(({ icon: Icon, title, desc }, i) => (
+            <motion.div
+              key={title}
+              initial={{ opacity: 0, x: i % 2 ? 40 : -40 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true, margin: '-40px' }}
+              transition={{ delay: (i % 3) * 0.1, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+              whileHover={{ y: -6 }}
+              className="group flex gap-4 rounded-2xl border border-white/10 bg-white/[0.04] p-6 transition-colors hover:border-[#FF7A00]/50 hover:bg-white/[0.08]"
+            >
+              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-[#FF7A00] to-[#E85D04] shadow-lg shadow-orange-500/20 transition-transform group-hover:rotate-6 group-hover:scale-110">
+                <Icon className="h-6 w-6" />
+              </span>
+              <div>
+                <h3 className="text-lg font-bold">{title}</h3>
+                <p className="mt-1 text-sm leading-relaxed text-blue-100/75">{desc}</p>
+              </div>
+            </motion.div>
+          ))}
         </div>
-
       </div>
     </section>
   )
