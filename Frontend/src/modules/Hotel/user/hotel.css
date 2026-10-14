@@ -1,0 +1,14 @@
+/* Customer hotel screens. Scoped with a ksg-hotel prefix so nothing leaks out. */
+.ksg-hotel {
+  font-family: "Poppins", ui-sans-serif, system-ui, sans-serif;
+}
+
+@keyframes ksg-hotel-blob {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(30px, -20px) scale(1.08); }
+}
+.ksg-hotel-blob { animation: ksg-hotel-blob 14s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ksg-hotel-blob { animation: none; }
+}
