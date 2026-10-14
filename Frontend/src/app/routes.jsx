@@ -13,8 +13,10 @@ const HelpSupportPage = lazy(() => import('../modules/auth/pages/HelpSupportPage
 const TermsPage = lazy(() => import('../modules/auth/pages/TermsPage'))
 const PrivacyPage = lazy(() => import('../modules/auth/pages/PrivacyPage'))
 const LandingPage = lazy(() => import('../modules/LandingPage/LandingPage'))
+const HotelApp = lazy(() => import('../modules/Hotel/HotelApp'))
 const PartnerApp = lazy(() => import('../modules/partner/PartnerApp'))
 import ProtectedRoute from '@food/components/ProtectedRoute'
+import { HOTEL_ENABLED } from '../config/features'
 
 const PageLoader = () => <AppShellSkeleton />
 
@@ -154,6 +156,11 @@ const AppRoutes = () => {
 
         {/* Taxi Module */}
         <Route path="/taxi/*" element={<TaxiAppWrapper />} />
+
+        {/* Hotel Module (VITE_ENABLE_HOTEL) */}
+        {HOTEL_ENABLED && (
+          <Route path="/hotel/*" element={<Suspense fallback={<PageLoader />}><HotelApp /></Suspense>} />
+        )}
 
         {/* Global Admin Portal - AdminRouter handles its own protection for sub-routes */}
         <Route
