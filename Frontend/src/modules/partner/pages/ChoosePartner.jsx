@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom"
 import {
   ArrowRight,
   BarChart3,
+  Building2,
   Check,
   MapPin,
   ShieldCheck,
@@ -13,6 +14,7 @@ import {
   Zap,
 } from "lucide-react"
 import { PARTNER_TYPES } from "../partnerApi"
+import { HOTEL_ENABLED } from "@/config/features"
 
 /*
  * Photos from Unsplash's CDN (free to use under the Unsplash licence), sized
@@ -47,6 +49,29 @@ const OPTIONS = [
       button: "bg-blue-600 hover:bg-blue-700 focus-visible:ring-blue-300",
     },
   },
+  // Hotels have their own partner portal under /hotel/partner (VITE_ENABLE_HOTEL).
+  ...(HOTEL_ENABLED
+    ? [
+        {
+          type: "hotel",
+          href: "/hotel/partner/login",
+          icon: Building2,
+          image: photo("1566073771259-6a8506099945"),
+          imageAlt: "A hotel with a swimming pool",
+          info: {
+            label: "Hotel / Homestay owner",
+            blurb: "Hotels, resorts, villas, homestays, hostels and PGs taking bookings.",
+          },
+          points: ["List your property", "Prices & availability calendar", "Verified guests"],
+          theme: {
+            card: "from-indigo-50/80",
+            iconBg: "bg-indigo-100 text-[#0B2A6F]",
+            tick: "bg-[#0B2A6F]",
+            button: "bg-[#0B2A6F] hover:bg-[#071A47] focus-visible:ring-indigo-300",
+          },
+        },
+      ]
+    : []),
   /*
    * The Medical (pharmacy) card is not offered on the public page: the
    * payment gateway's review asked for no medicine/pharmacy content on the
@@ -69,7 +94,7 @@ const TRUST = [
 
 function PartnerCard({ option, onStart }) {
   const { type, icon: Icon, image, imageAlt, points, theme } = option
-  const info = PARTNER_TYPES[type]
+  const info = option.info || PARTNER_TYPES[type]
   return (
     <article
       className={`relative flex flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-gradient-to-b ${theme.card} to-white p-6 shadow-[0_10px_30px_-12px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_40px_-14px_rgba(15,23,42,0.25)]`}
@@ -97,7 +122,7 @@ function PartnerCard({ option, onStart }) {
       </ul>
       <button
         type="button"
-        onClick={() => onStart(type)}
+        onClick={() => onStart(option)}
         className={`mt-auto flex h-13 min-h-[3.25rem] w-full items-center justify-center gap-2 rounded-2xl text-lg font-semibold text-white shadow-sm transition focus:outline-none focus-visible:ring-4 ${theme.button}`}
       >
         Get Started <ArrowRight className="h-5 w-5" />
@@ -109,9 +134,10 @@ function PartnerCard({ option, onStart }) {
 export default function ChoosePartner() {
   const navigate = useNavigate()
 
-  const open = (type) => {
+  const open = ({ type, href }) => {
     // Restaurants already have a complete sign-in and onboarding of their own.
-    if (type === "restaurant") navigate("/food/restaurant/login")
+    if (href) navigate(href)
+    else if (type === "restaurant") navigate("/food/restaurant/login")
     else navigate(`/partner/login/${type}`)
   }
 
