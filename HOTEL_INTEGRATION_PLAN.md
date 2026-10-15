@@ -319,8 +319,10 @@ certificate if the partner is GST-registered).
   `hotel.reviewAutoApprove` (true), `hotel.searchRadiusKm` (50).
 - **Platform fee**: existing `fees.platformFee` / `fees.platformFeeGstRate` via
   `resolveMasterFees('hotel', zoneId)`.
-- **Coupons**: existing core coupons (`/v1/platform/coupons`) with `vertical: 'hotel'`;
-  add `hotel` to `core/promotions/couponList.service.js` `SOURCES`. No `hotel_offers`.
+- **Coupons**: superseded in phase 9 — core has no shared coupon engine (each vertical
+  keeps its own offer collection), so hotels got their own `hotel_offers` +
+  `hotel_offer_redemptions`, listed in Master > Coupons via `couponList.service.js`
+  `SOURCES.hotel`. See "Phase 9 coupons, as built" in §8.
 
 ### 3.10 Dropped from the source
 `HotelUISetting` (white-label demo), source `Wallet`/`Transaction`/`Withdrawal`
@@ -587,8 +589,8 @@ Deviations; tests: `Backend/tests/hotel.pricing.test.mjs`, `hotel.booking.smoke.
 - Core edits: `payments/models/payment.model.js` + `payments.facade.js` (vertical `hotel`,
   subject `HotelBooking`, payer `FoodUser`); `payments/controllers/razorpayWebhook.controller.js`
   (hotel `payment.captured` hook); `server.js` (60 s expiry interval, gated).
-- Deviations: coupons return 400 until hotel coupons exist (core has no shared redeem
-  engine); settings not in the registry; gateway refunds create the core `Refund` row via
+- Deviations: coupons returned 400 until hotel coupons existed (resolved in phase 9);
+  settings not in the registry; gateway refunds create the core `Refund` row via
   `initiateRefund` but call Razorpay through the hotel adapter (the core
   `processGatewayRefund` marks the whole payment refunded on a partial refund).
 
@@ -604,6 +606,22 @@ Deviations; tests: `Backend/tests/hotel.pricing.test.mjs`, `hotel.booking.smoke.
   Redis lock: each send is claimed by a conditional flag write instead.
 - Settings (minWithdrawal, settleOn, reviewAutoApprove) come from
   `services/settings.service.js` `getHotelSettings()` via `services/moneySettings.js`.
+
+**Phase 9 coupons, as built** (API + rules: `docs/hotel-api-contract.md` "Phase 9: coupons";
+tests: `Backend/tests/hotel.coupons.smoke.mjs`, coupon cases in `hotel.pricing.test.mjs`,
+`coupon-list.smoke.mjs`):
+- `models/hotelOffer.model.js` (`hotel_offers`), `models/hotelOfferRedemption.model.js`
+  (`hotel_offer_redemptions`), `services/offer.service.js` (validate / redeem in the
+  create transaction / release on cancel+expire via a `bookingEvents` listener / admin CRUD
+  / customer list), `routes/offer.routes.js`, `controllers/offer.controller.js`.
+- Funding rule: commission always on the post-discount taxable amount; platform-funded
+  coupons add `pricing.platformSubsidy` (= the discount) to the partner payout and the
+  settlement (platform `ADJUSTMENT −subsidy`); partner-funded coupons cost the hotel and
+  must be property-restricted. GST stays on the discounted amount (§4.2 unchanged).
+- Core edits: `core/promotions/couponList.service.js` (`hotel` source),
+  `core/finance/platformPnl.service.js` (subsidy reduces hotel net).
+- Frontend: hotel admin **Offers** page (`/admin/hotel/offers`), offer chips on checkout,
+  Master > Coupons links hotel coupons to it.
 
 ≈ 6–8 weeks for one developer; backend phases 1–5 and frontend 6–8 can run in parallel
 with two people once phase 1 lands.

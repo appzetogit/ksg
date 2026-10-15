@@ -3,8 +3,7 @@
 // Commission and payout fields appear only in partner/admin views.
 
 import { toDateString } from './dates.js';
-
-const PARTNER_ONLY_PRICING = ['commissionRate', 'commissionAmount', 'commissionGst', 'partnerPayout'];
+import { PARTNER_ONLY_PRICING } from './pricing.service.js';
 
 export const bookingSummaryJSON = (doc, { view = 'partner' } = {}) => {
     const b = doc?.toObject ? doc.toObject({ versionKey: false }) : { ...doc };

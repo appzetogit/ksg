@@ -22,6 +22,8 @@
 //   online / wallet  P = total  -> EARNING +partnerGross, COMMISSION -commission
 //   pay at hotel     P = 0      -> COMMISSION -commission (and the fee, if any)
 //   partial prepaid  in between.
+// A platform-funded coupon adds its subsidy S to partnerGross (see splitOf): partner
+// EARNING +(P - fee + S), platform ADJUSTMENT -S ('platform_subsidy').
 //
 // Cancellation / no-show:
 //   - already settled -> every settle row is reversed (EARNING by REFUND, the rest by
@@ -53,14 +55,24 @@ export const JOB_TYPE = 'hotel_booking';
 const r2 = (n) => Math.round(((Number(n) || 0) + Number.EPSILON) * 100) / 100;
 const tiny = (n) => Math.abs(r2(n)) < 0.01;
 
-/** The booking's money split. Pure. */
+/**
+ * The booking's money split. Pure.
+ *
+ * Platform-funded coupons (pricing.platformSubsidy, see pricing.service.js): the guest
+ * paid `total`, which is already net of the coupon; the hotel is owed its tariff as if
+ * there had been no coupon, so partnerGross includes the subsidy and the platform pays
+ * it (a 'platform_subsidy' ADJUSTMENT row of -subsidy on the platform owner). Then
+ * partnerGross + fee = total + subsidy, and every settle identity above still holds
+ * with EARNING = P - fee + subsidy.
+ */
 export const splitOf = (booking) => {
     const p = booking?.pricing || {};
-    const partnerGross = r2((p.taxableAmount || 0) + (p.gstAmount || 0));
+    const subsidy = r2(p.platformSubsidy || 0);
+    const partnerGross = r2((p.taxableAmount || 0) + (p.gstAmount || 0) + subsidy);
     const commission = r2((p.commissionAmount || 0) + (p.commissionGst || 0));
     const fee = r2((p.platformFee || 0) + (p.platformFeeGst || 0));
-    const total = r2(p.total || partnerGross + fee);
-    return { partnerGross, commission, fee, total, partnerNet: r2(partnerGross - commission) };
+    const total = r2(p.total || (p.taxableAmount || 0) + (p.gstAmount || 0) + fee);
+    return { partnerGross, commission, fee, total, subsidy, partnerNet: r2(partnerGross - commission) };
 };
 
 const keyPrefix = (bookingId, step) => `hotel_booking:${bookingId}:${step}:`;
@@ -132,15 +144,19 @@ const settleRows = (booking, { prepaid, ratio = null }) => {
     let earning;
     let commission;
     let fee;
+    let subsidy;
     if (ratio === null) {
-        earning = r2(prepaid - s.fee);
+        earning = r2(prepaid - s.fee + s.subsidy);
         commission = s.commission;
         fee = s.fee;
+        subsidy = s.subsidy;
     } else {
         earning = r2(s.partnerGross * ratio);
         commission = r2(s.commission * ratio);
         fee = r2(s.fee * ratio);
+        subsidy = r2(s.subsidy * ratio);
     }
+    const code = booking.pricing?.couponCode ? ` ${booking.pricing.couponCode}` : '';
     const partner = partnerOwner(booking);
     return [
         earning >= 0
@@ -149,6 +165,8 @@ const settleRows = (booking, { prepaid, ratio = null }) => {
         { role: 'partner_commission', owner: partner, type: 'COMMISSION', amount: -commission, reason: `Booking ${ref}: commission` },
         { role: 'platform_commission', owner: PLATFORM_OWNER, type: 'COMMISSION', amount: commission, reason: `Booking ${ref}: commission` },
         { role: 'platform_fee', owner: PLATFORM_OWNER, type: 'PLATFORM_FEE', amount: fee, reason: `Booking ${ref}: platform fee` },
+        // Zero (and so skipped by post) unless a platform-funded coupon was used.
+        { role: 'platform_subsidy', owner: PLATFORM_OWNER, type: 'ADJUSTMENT', amount: -subsidy, reason: `Booking ${ref}: coupon${code} funded by the platform` },
     ];
 };
 

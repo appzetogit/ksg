@@ -7,7 +7,17 @@
 //   taxableAmount = subtotal - couponDiscount - prepaidDiscount
 //   total         = taxableAmount + gstAmount + platformFee + platformFeeGst
 //   payNow + payAtHotel = total
-//   partnerPayout = taxableAmount + gstAmount - commissionAmount - commissionGst
+//   partnerPayout = taxableAmount + gstAmount + platformSubsidy - commissionAmount - commissionGst
+//
+// Coupon funding (phase 9, services/offer.service.js):
+//   - the coupon always lowers what the guest pays, before the prepaid discount and
+//     before GST (GST is on the discounted taxable amount, as before);
+//   - commission is always on the post-discount taxable amount;
+//   - platform-funded: platformSubsidy = couponDiscount, added to the partner payout, so
+//     the hotel's room revenue is what it would have been without the coupon and the
+//     platform absorbs the discount (settlement.listener.js pays it out);
+//   - partner-funded (and a coupon with no funding given): platformSubsidy = 0, the
+//     discount comes out of the hotel's revenue.
 //
 // The client never supplies any of these: the booking service recomputes them from
 // the room type, the night prices (inventory.quoteNights) and the settings.
@@ -39,7 +49,8 @@ export const gstRateFor = (tariff, slabs) => {
  * @param {number}   p.adults
  * @param {number}   p.children
  * @param {string}   p.paymentMode   pay_at_hotel | online | partial_prepaid
- * @param {object}  [p.coupon]       { code, discount } -- discount in rupees, already validated
+ * @param {object}  [p.coupon]       { code, discount, funding? } -- discount in rupees, already
+ *                                   validated; funding 'platform' | 'partner' (default partner)
  * @param {object}   p.settings      HotelSettings
  * @param {object}  [p.platformFee]  { fee, gstRate } (rupees, percent)
  * @returns {{ pricing, payNow, payAtHotel }}
@@ -108,7 +119,9 @@ export const priceStay = ({
         Math.max(round2((taxableAmount * commissionRate) / 100), round2(Number(settings.minCommission) || 0)),
     );
     const commissionGst = round2((commissionAmount * (Number(settings.commissionGstPercent) || 0)) / 100);
-    const partnerPayout = sub(add(taxableAmount, gstAmount), commissionAmount, commissionGst);
+    const couponFunding = couponDiscount > 0 ? (coupon.funding === 'platform' ? 'platform' : 'partner') : null;
+    const platformSubsidy = couponFunding === 'platform' ? couponDiscount : 0;
+    const partnerPayout = sub(add(taxableAmount, gstAmount, platformSubsidy), commissionAmount, commissionGst);
 
     return {
         pricing: {
@@ -117,6 +130,8 @@ export const priceStay = ({
             subtotal,
             ...(couponDiscount > 0 && coupon?.code ? { couponCode: coupon.code } : {}),
             couponDiscount,
+            ...(couponFunding ? { couponFunding } : {}),
+            platformSubsidy,
             prepaidDiscount,
             taxableAmount,
             gstRate,
@@ -136,9 +151,15 @@ export const priceStay = ({
     };
 };
 
-/** The customer-facing part of a pricing object (no commission or payout). */
+/** Pricing fields only partners and admins see. */
+export const PARTNER_ONLY_PRICING = Object.freeze([
+    'commissionRate', 'commissionAmount', 'commissionGst', 'partnerPayout', 'couponFunding', 'platformSubsidy',
+]);
+
+/** The customer-facing part of a pricing object (no commission, payout or coupon funding). */
 export const customerPricing = (pricing) => {
     if (!pricing) return pricing;
-    const { commissionRate, commissionAmount, commissionGst, partnerPayout, ...rest } = pricing;
+    const rest = { ...pricing };
+    for (const k of PARTNER_ONLY_PRICING) delete rest[k];
     return rest;
 };

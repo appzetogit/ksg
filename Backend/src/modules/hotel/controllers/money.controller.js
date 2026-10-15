@@ -73,7 +73,7 @@ export const earnings = handle(async (req, res) => {
         .filter((b) => !settled.has(String(b._id)))
         .reduce((sum, b) => {
             const s = splitOf(b);
-            return sum + prepaidFromBooking(b) - s.fee - s.commission;
+            return sum + prepaidFromBooking(b) - s.fee + s.subsidy - s.commission;
         }, 0));
 
     return sendResponse(res, 200, 'Earnings', {

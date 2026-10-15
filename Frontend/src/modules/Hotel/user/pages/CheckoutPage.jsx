@@ -21,7 +21,7 @@ import { guestsSummary } from "../components/StayFields";
 import { BTN, CARD, Skeleton, SmartImage, StateMessage, cx, fadeUp, stagger } from "../components/ui";
 import { PaymentPendingCard, PriceBreakdown, fmtDateTime } from "../components/booking";
 import { getProperty } from "../lib/api";
-import { PAYMENT_MODES, createBooking, getBooking, getQuote, parseSelection, serialiseSelection } from "../lib/bookingApi";
+import { PAYMENT_MODES, createBooking, getBooking, getOffers, getQuote, parseSelection, serialiseSelection } from "../lib/bookingApi";
 import { describeCancellation, unitLabel } from "../lib/catalogue";
 import { diffDays, fmtLong, fmtTime, nightsLabel } from "../lib/dates";
 import { addressLine, formatINR } from "../lib/format";
@@ -160,6 +160,7 @@ export default function CheckoutPage() {
   const [couponInput, setCouponInput] = useState("");
   const [coupon, setCoupon] = useState("");
   const [couponError, setCouponError] = useState("");
+  const [offers, setOffers] = useState([]);
   const [useWallet, setUseWallet] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -213,6 +214,20 @@ export default function CheckoutPage() {
       alive = false;
     };
   }, [quoteInput, mode, coupon, useWallet, quoteNonce, created]);
+
+  // Coupons this customer can use here, shown as tappable chips. Optional: on any error
+  // the chips just don't show and the code box still works.
+  useEffect(() => {
+    if (!valid || created) return undefined;
+    let alive = true;
+    getOffers(propertyId).then(
+      (list) => alive && setOffers(list),
+      () => alive && setOffers([])
+    );
+    return () => {
+      alive = false;
+    };
+  }, [valid, propertyId, created]);
 
   const q = quote.data;
   const payNow = Number(q?.payNow) || 0;
@@ -298,8 +313,9 @@ export default function CheckoutPage() {
   const show = (field) => touched[field] && errors[field];
   const locked = Boolean(created) || submitting || payment.busy;
 
-  const applyCoupon = () => {
-    const code = couponInput.trim().toUpperCase();
+  const applyCoupon = (picked) => {
+    const code = (typeof picked === "string" ? picked : couponInput).trim().toUpperCase();
+    if (typeof picked === "string") setCouponInput(code);
     if (!code) {
       setCouponError("Enter a coupon code.");
       return;
@@ -344,7 +360,13 @@ export default function CheckoutPage() {
     } catch (err) {
       if (err.status === 409) goSoldOut(err.message);
       else if (err.status === 401) loginRedirect(navigate, here);
-      else setSubmitError(err.message);
+      else if (err.status === 400 && coupon && String(err.message || "").includes(coupon)) {
+        // The coupon stopped applying (e.g. its last use just went): drop it, re-quote,
+        // and let the guest confirm the new price.
+        setCouponError(err.message);
+        setCoupon("");
+        setSubmitError("Your coupon could not be applied, so the price has been updated. Please check it and confirm again.");
+      } else setSubmitError(err.message);
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
@@ -598,6 +620,7 @@ export default function CheckoutPage() {
                   <span className="text-sm">
                     <b className="text-[#0F7A36]">{coupon}</b> applied
                     {Number(q.pricing?.couponDiscount) > 0 && <> — you save {formatINR(q.pricing.couponDiscount)}</>}
+                    {q.coupon?.title && <span className="block text-xs text-slate-500">{q.coupon.title}</span>}
                   </span>
                   <button type="button" onClick={removeCoupon} className="rounded-full p-1.5 text-slate-500 hover:bg-white" aria-label="Remove coupon">
                     <X className="h-4 w-4" />
@@ -636,6 +659,39 @@ export default function CheckoutPage() {
               <p id={`${ids}-code-msg`} className={cx("mt-1.5 min-h-[16px] text-xs", couponError ? "text-rose-600" : "text-slate-400")} role={couponError ? "alert" : undefined}>
                 {couponError}
               </p>
+              {!coupon && offers.length > 0 && (
+                <div className="mt-2">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Available offers</p>
+                  <ul className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
+                    {offers.map((o) => {
+                      const subtotal = Number(q?.pricing?.subtotal) || 0;
+                      const short = o.minBookingAmount > 0 && subtotal > 0 && subtotal < o.minBookingAmount;
+                      return (
+                        <li key={o.code} className="shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => applyCoupon(o.code)}
+                            disabled={quote.loading}
+                            title={o.description || o.title || o.summary}
+                            className={cx(
+                              "flex max-w-[240px] flex-col items-start rounded-xl border border-dashed px-3 py-2 text-left transition-colors disabled:opacity-60",
+                              short ? "border-slate-300 bg-slate-50" : "border-[#FF7A00] bg-orange-50 hover:bg-orange-100"
+                            )}
+                          >
+                            <span className="font-mono text-sm font-bold text-slate-900">{o.code}</span>
+                            <span className="text-xs text-slate-600">{o.title || o.summary}</span>
+                            {short ? (
+                              <span className="text-[11px] text-slate-500">Min booking {formatINR(o.minBookingAmount)}</span>
+                            ) : o.firstBookingOnly ? (
+                              <span className="text-[11px] text-slate-500">First booking only</span>
+                            ) : null}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
             </motion.section>
           </fieldset>
 

@@ -9,6 +9,7 @@ import BookingsList from "./pages/BookingsList";
 import BookingDetail from "./pages/BookingDetail";
 import ReviewsList from "./pages/ReviewsList";
 import WithdrawalsList from "./pages/WithdrawalsList";
+import OffersList from "./pages/OffersList";
 import Settings from "./pages/Settings";
 
 /**
@@ -29,6 +30,7 @@ export default function HotelAdminApp() {
         <Route path="bookings" element={<BookingsList />} />
         <Route path="bookings/:id" element={<BookingDetail />} />
         <Route path="reviews" element={<ReviewsList />} />
+        <Route path="offers" element={<OffersList />} />
         <Route path="withdrawals" element={<WithdrawalsList />} />
         <Route path="settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/admin/hotel/dashboard" replace />} />

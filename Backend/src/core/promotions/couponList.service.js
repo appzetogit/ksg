@@ -6,8 +6,8 @@ import { resolvePromoCeiling, tighten } from '../finance/promoLimits.service.js'
 /**
  * One list of every coupon on the platform (Master > Coupons).
  *
- * Three systems hold them: Food's food_offers, Quick & Medical's qc_offers and
- * Taxi's promo codes. Their forms differ -- restaurant scope and cost sharing
+ * Four systems hold them: Food's food_offers, Quick & Medical's qc_offers,
+ * Taxi's promo codes and Hotels' hotel_offers. Their forms differ -- restaurant scope and cost sharing
  * in one, service locations and ride types in another -- so creating and
  * editing stay on each service's own screen. What an operator needs in one
  * place is the other half: which codes exist, which are live right now, how
@@ -48,6 +48,15 @@ const SOURCES = {
     vertical: 'taxi',
     load: async () => (await import('../../modules/taxi/admin/promotions/models/PromoCode.js')).PromoCode,
     sellers: null,
+  },
+  // Hotel coupons (modules/hotel/models/hotelOffer.model.js); created and edited on
+  // the hotel admin's Offers screen. Paused/live is `isActive`.
+  hotel: {
+    label: 'Hotels',
+    service: 'hotel',
+    vertical: 'hotel',
+    load: async () => (await import('../../modules/hotel/models/hotelOffer.model.js')).HotelOffer,
+    sellers: 'hotel_properties',
   },
 };
 
@@ -157,19 +166,59 @@ function taxiRow(doc, ceiling, now) {
   };
 }
 
+function hotelRow(doc, names, ceiling, now) {
+  const pct = doc.discountType === 'percentage';
+  const value = Number(doc.discountValue) || 0;
+  const limit = tighten(doc.usageLimit, ceiling.total);
+  const used = Number(doc.usedCount) || 0;
+  const start = date(doc.validFrom);
+  const end = date(doc.validTo);
+  const ids = (doc.propertyIds || []).map(String);
+  const types = (doc.propertyTypes || []).filter(Boolean);
+  let where = 'All properties';
+  if (ids.length) {
+    const shown = ids.map((id) => names.get(id)).filter(Boolean);
+    where = shown.length === 1 ? shown[0] : `${ids.length} properties`;
+  } else if (types.length) {
+    where = types.map((t) => `${t}s`).join(', ');
+  }
+  return {
+    key: `hotel:${doc._id}`,
+    id: String(doc._id),
+    source: 'hotel',
+    sourceLabel: SOURCES.hotel.label,
+    code: doc.code,
+    discount: pct
+      ? `${value}% off${Number(doc.maxDiscount) > 0 ? ` up to ${money(doc.maxDiscount)}` : ''}`
+      : `${money(value)} off`,
+    minOrder: Number(doc.minBookingAmount) || 0,
+    audience: doc.firstBookingOnly ? 'First booking only' : 'Everyone',
+    where: doc.funding === 'partner' ? `${where} · hotel-funded` : where,
+    createdBy: 'admin',
+    used,
+    limit,
+    perUser: tighten(doc.perUserLimit, ceiling.perUser),
+    startDate: start,
+    endDate: end,
+    shownInCart: true,
+    state: stateOf({ paused: doc.isActive === false, off: false, start, end, used, limit }, now),
+    createdAt: doc.createdAt || null,
+  };
+}
+
 async function sellerNames(collection, docs) {
   if (!collection) return new Map();
   const ids = new Set();
   for (const d of docs) {
-    for (const id of [...(d.restaurantIds || []), d.restaurantId]) if (isId(id)) ids.add(String(id));
+    for (const id of [...(d.restaurantIds || []), d.restaurantId, ...(d.propertyIds || [])]) if (isId(id)) ids.add(String(id));
   }
   if (!ids.size) return new Map();
   const rows = await mongoose.connection
     .collection(collection)
     .find({ _id: { $in: [...ids].map((id) => new mongoose.Types.ObjectId(id)) } })
-    .project({ restaurantName: 1 })
+    .project({ restaurantName: 1, name: 1 })
     .toArray();
-  return new Map(rows.map((r) => [String(r._id), r.restaurantName || '']));
+  return new Map(rows.map((r) => [String(r._id), r.restaurantName || r.name || '']));
 }
 
 async function rowsFor(source, filter = {}) {
@@ -182,6 +231,7 @@ async function rowsFor(source, filter = {}) {
   const now = new Date();
   if (source === 'taxi') return docs.map((d) => taxiRow(d, ceiling, now));
   const names = await sellerNames(def.sellers, docs);
+  if (source === 'hotel') return docs.map((d) => hotelRow(d, names, ceiling, now));
   return docs.map((d) => storeRow(source, d, names, ceiling, now));
 }
 
@@ -241,7 +291,7 @@ export async function setCouponLive(admin, source, id, live) {
   const doc = await Model.findById(id).lean();
   if (!doc) throw new ApiError(404, 'Coupon not found');
 
-  const end = date(source === 'taxi' ? doc.to_date : doc.endDate);
+  const end = date(source === 'taxi' ? doc.to_date : source === 'hotel' ? doc.validTo : doc.endDate);
   if (live && end && end <= new Date()) {
     throw new ApiError(400, "This coupon's end date has passed. Change the dates on its own screen to bring it back.");
   }
@@ -252,6 +302,9 @@ export async function setCouponLive(admin, source, id, live) {
       const { togglePromoCodeStatus } = await import('../../modules/taxi/admin/promotions/services/promotionsService.js');
       await togglePromoCodeStatus(id);
     }
+  } else if (source === 'hotel') {
+    // Hotel checkout redeems only isActive coupons (offer.service.js).
+    await Model.updateOne({ _id: doc._id }, { $set: { isActive: live } });
   } else {
     await Model.updateOne({ _id: doc._id }, { $set: { status: live ? 'active' : 'paused' } });
   }

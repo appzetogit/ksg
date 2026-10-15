@@ -78,10 +78,10 @@ const byCode = async (admin = owner, query = {}) =>
 
 console.log('\nThe list');
 
-await check('all three services in one list', async () => {
+await check('all services in one list', async () => {
   const res = await coupons.listCoupons(owner, {});
   assert.equal(res.total, 6);
-  assert.deepEqual(res.sources.map((s) => s.key), ['food', 'quick', 'taxi']);
+  assert.deepEqual(res.sources.map((s) => s.key), ['food', 'quick', 'taxi', 'hotel']);
 });
 
 await check('each coupon reads plainly', async () => {
@@ -179,6 +179,36 @@ await check('view-only cannot pause', async () => {
   const viewer = sub(['taxi'], ['promotions.read']);
   assert.equal((await coupons.listCoupons(viewer, {})).total, 1);
   await assert.rejects(() => coupons.setCouponLive(viewer, 'taxi', String(t._id), false), /not change them/);
+});
+
+console.log('\nHotels');
+
+await check('a hotel coupon is listed, reads plainly, and pauses through isActive', async () => {
+  const { HotelOffer } = await import('../src/modules/hotel/models/hotelOffer.model.js');
+  const inn = oid();
+  await mongoose.connection.collection('hotel_properties').insertOne({ _id: inn, name: 'Lakeview Inn' });
+  const h = await HotelOffer.create({
+    code: 'STAY15', discountType: 'percentage', discountValue: 15, maxDiscount: 500, minBookingAmount: 1500,
+    propertyIds: [inn], funding: 'partner', firstBookingOnly: true, usageLimit: 50, usedCount: 2, validTo: future,
+  });
+  try {
+    const row = (await byCode(owner, { source: 'hotel' })).STAY15;
+    assert.equal(row.sourceLabel, 'Hotels');
+    assert.equal(row.discount, '15% off up to ₹500');
+    assert.equal(row.minOrder, 1500);
+    assert.equal(row.where, 'Lakeview Inn · hotel-funded');
+    assert.equal(row.audience, 'First booking only');
+    assert.equal(row.used, 2);
+    assert.equal(row.limit, 50);
+    assert.equal(row.state, 'live');
+    const paused = await coupons.setCouponLive(owner, 'hotel', String(h._id), false);
+    assert.equal(paused.state, 'paused');
+    assert.equal((await HotelOffer.findById(h._id).lean()).isActive, false);
+    const back = await coupons.setCouponLive(owner, 'hotel', String(h._id), true);
+    assert.equal(back.state, 'live');
+  } finally {
+    await HotelOffer.deleteOne({ _id: h._id });
+  }
 });
 
 await mongoose.disconnect();

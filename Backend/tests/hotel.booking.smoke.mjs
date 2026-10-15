@@ -258,10 +258,10 @@ await check('quote: walletApplicable is min(balance, payNow); 0 for pay at hotel
     await setBalance(0);
 });
 
-await check('quote: coupon -> 400 with the reason; party too big -> available false; validation', async () => {
+await check('quote: unknown coupon -> 400 with the reason; party too big -> available false; validation', async () => {
     const c = await call(server, 'POST', `${H}/user/bookings/quote`, { token: userToken, body: body({ couponCode: 'STAY10' }) });
     assert.equal(c.status, 400);
-    assert.match(c.json.message, /Coupons are not available/);
+    assert.match(c.json.message, /STAY10 is not a valid coupon code/);
     const big = await call(server, 'POST', `${H}/user/bookings/quote`, { token: userToken, body: body({ adults: 4 }) });
     assert.equal(big.status, 200);
     assert.equal(big.json.data.available, false);

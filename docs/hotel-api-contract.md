@@ -236,7 +236,8 @@ Quote = {
   walletApplicable: number,        // max wallet amount usable against payNow (0 if no wallet)
   cancellationPolicy: { type, freeCancelHours, refundPercentAfter },
   freeCancellationUntil?: ISODateTime,
-  holdMinutes: number              // how long an unpaid booking holds the rooms
+  holdMinutes: number,             // how long an unpaid booking holds the rooms
+  coupon?: { code, title, discount } // phase 9, when couponCode applied
 }
 
 Booking = {
@@ -343,11 +344,9 @@ into the emitter (wrap in try/catch and log).
 Where the booking backend had to pick an interpretation. Frontends follow this section
 over the tables above if they disagree.
 
-1. **Coupons are not available for hotels yet.** Core coupons are per-vertical offer
-   collections (food_offers, qc_offers, taxi promo codes) with no shared redeem engine,
-   so any `couponCode` on quote/create returns **400** "Coupons are not available for
-   hotels yet". `pricing.couponDiscount` is always 0 for now; `priceStay()` already
-   accepts a validated `{ code, discount }` for when hotel coupons land.
+1. **Coupons — resolved in phase 9.** `couponCode` on quote/create is now validated
+   against hotel coupons (`hotel_offers`); see "Phase 9: coupons" below. A bad code is
+   still a **400**, now with the specific reason.
 2. **Settings** live in one `hotel_settings` document (model `HotelSettings`), not the
    core settings registry (the slab table and the hotel admin form do not fit its scalar
    keys). `GET/PUT /admin/settings` return the settings object as `data` (bare). PUT
@@ -489,3 +488,69 @@ over the tables above if they disagree.
     same `hotel_bookings` fields the booking service writes; the `payment` event with
     `kind: 'at_hotel'` (mark-paid) is recorded but never counts as prepaid, and each `refund`
     event (one per actual refund) is keyed by its `refundId`.
+
+## Phase 9: coupons
+
+Hotel coupons live in `hotel_offers` (model `HotelOffer`); each use is a row in
+`hotel_offer_redemptions` (`{ offerId, userId, bookingId, discount, funding, status: 'active'|'released' }`,
+unique `(offerId, bookingId)`). Logic: `Backend/src/modules/hotel/services/offer.service.js`.
+Tests: `Backend/tests/hotel.coupons.smoke.mjs`.
+
+```ts
+HotelOffer (admin view) = {
+  _id, code /* unique, uppercase, 3-30 of A-Z 0-9 _ - */, title, description,
+  discountType: 'percentage'|'flat', discountValue, maxDiscount: number|null /* % cap */,
+  minBookingAmount /* vs the stay subtotal, before taxes */, validFrom: ISO|null, validTo: ISO|null,
+  usageLimit: number|null /* total, null/0 = unlimited */, perUserLimit: number|null,
+  effectiveUsageLimit, effectivePerUserLimit /* tightened by Master promo ceiling, vertical 'hotel' */,
+  usedCount /* ACTIVE redemptions */, firstBookingOnly: boolean,
+  propertyIds: string[] /* [] = all */, propertyTypes: string[] /* [] = all */,
+  funding: 'platform'|'partner', isActive: boolean,
+  state: 'live'|'scheduled'|'paused'|'used_up'|'expired', summary /* "20% off up to Rs 300" */,
+  createdBy, createdAt, updatedAt
+}
+Offer (customer view) = { code, title, description, discountType, discountValue, maxDiscount,
+  minBookingAmount, validTo, firstBookingOnly, summary }
+```
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/admin/offers?state&q&page&limit` | page of HotelOffer + `counts` per state (`state=all` or omitted = all) |
+| POST | `/admin/offers` | create; `code`, `discountType`, `discountValue` required; defaults `funding: 'platform'`, `isActive: true`. 409 duplicate code; 400 percentage > 100, `validTo <= validFrom`, unknown property, or `funding: 'partner'` with no `propertyIds` |
+| GET | `/admin/offers/:id` | `data: HotelOffer` |
+| PUT | `/admin/offers/:id` | partial update (same rules on the merged coupon); `{ isActive }` pauses/resumes |
+| DELETE | `/admin/offers/:id` | only a never-used coupon; a used one → **409** (pause it instead) |
+| GET | `/user/offers?propertyId` | `USER` token. `data: Offer[]`: active, inside their window, not used up, applicable to the property, and usable by this customer (per-user limit, first booking) |
+
+Rules:
+1. **Validation** (quote and create): unknown code, paused, not started, expired, wrong
+   property / property type, subtotal below `minBookingAmount`, total limit reached,
+   per-user limit reached (counts the customer's ACTIVE redemptions), first-booking-only
+   with an earlier non-cancelled/non-expired booking → **400** with a message naming the code.
+   Discount: percentage of the subtotal capped by `maxDiscount`, or the flat amount; never
+   more than the subtotal. The Quote gains `coupon: { code, title, discount }` and
+   `pricing.couponCode` / `pricing.couponDiscount`.
+2. **Redemption** happens inside the booking-create transaction: a conditional
+   `$inc` on `usedCount` (`usedCount < limit`) makes the total limit exact under parallel
+   bookings; the per-user count runs in the same transaction (concurrent redemptions of one
+   coupon write-conflict and are retried). If the last use went meanwhile, create answers
+   **400** "... has just been fully used" and nothing is booked.
+3. **Release**: when a booking becomes `cancelled` or `expired`, its redemption is
+   released and `usedCount` decremented (a `transition` listener on `bookingEvents`;
+   idempotent). `no_show` and `checked_out` keep the use.
+4. **Funding** (who bears the discount):
+   - the coupon always lowers what the guest pays, before the prepaid discount and before
+     GST; commission is always on the post-discount `taxableAmount`;
+   - `platform`: `pricing.platformSubsidy = couponDiscount` and
+     `partnerPayout = taxableAmount + gstAmount + platformSubsidy − commission − commissionGst`,
+     i.e. the hotel's room revenue is as if the guest paid full price. Settlement adds the
+     subsidy to the hotel's `EARNING` and writes a platform `ADJUSTMENT −subsidy`
+     (`platform_subsidy` role). Pro-rata settlement on cancellation/no-show/late refund
+     scales the subsidy like every other row. Platform P&L counts it against net.
+   - `partner`: no subsidy; the discount comes out of the hotel's revenue. Only allowed on
+     coupons restricted to specific `propertyIds`.
+   - `pricing.couponFunding` and `pricing.platformSubsidy` are partner/admin-only (hidden
+     from customer views, like commission).
+5. **Master > Coupons** (`/v1/platform/coupons`) lists hotel coupons as source `hotel`
+   ("Hotels") and pauses/resumes them through `isActive`; editing happens on the hotel
+   admin's Offers screen (`/admin/hotel/offers`).

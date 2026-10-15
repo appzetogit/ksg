@@ -22,6 +22,7 @@ const withRefresh = async (call) => {
 const get = (url, params) => withRefresh(() => adminApi.get(url, params));
 const put = (url, body) => withRefresh(() => adminApi.put(url, body));
 const post = (url, body) => withRefresh(() => adminApi.post(url, body));
+const del = (url) => withRefresh(() => adminApi.del(url));
 
 /** Drop empty filters so the server never sees `status=` or `q=`. */
 const clean = (params = {}) =>
@@ -58,4 +59,10 @@ export const hotelAdmin = {
 
   settings: () => get("/admin/settings"),
   saveSettings: (patch) => put("/admin/settings", patch),
+
+  // Phase 9: coupons
+  offers: (params) => get("/admin/offers", clean(params)),
+  createOffer: (body) => post("/admin/offers", body),
+  updateOffer: (id, patch) => put(`/admin/offers/${id}`, patch),
+  deleteOffer: (id) => del(`/admin/offers/${id}`),
 };
