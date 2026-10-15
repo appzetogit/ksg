@@ -1,42 +1,36 @@
-import { userApi } from "../../shared/hotelApi";
+import { HOTEL_BASE, publicApi, userApi } from "../../shared/hotelApi";
+import { getUserToken } from "./session";
 
 /**
- * Booking calls for the customer app.
+ * Booking calls for the customer app (docs/hotel-api-contract.md, "Phase 4–5").
  *
- * The quote/booking endpoints arrive with the booking phase (HOTEL_INTEGRATION_PLAN.md
- * §8 phase 4) and are not in docs/hotel-api-contract.md yet. Until then:
- *   - getQuote() returns a client-side ESTIMATE built from the public availability
- *     response (room charges + extra guests, before taxes);
- *   - createBooking() is disabled (BOOKING_ENABLED = false).
- * Wiring the real flow = implement the two TODOs below and flip BOOKING_ENABLED; the
- * checkout screen already renders whatever `getQuote` resolves to and calls
- * `createBooking` on confirm.
+ * The property page still prices a selection client-side (`estimateQuote`: room charges
+ * + extra guests, before taxes) so its Reserve bar updates instantly; the checkout
+ * screen always shows the server quote (`getQuote`), which is the price that is booked.
+ * One booking = one room type (`roomTypeId` + a `rooms` count).
  */
 
-export const BOOKING_ENABLED = false;
+export const BOOKING_ENABLED = true;
 
 export const PAYMENT_MODES = [
   {
     key: "pay_at_hotel",
     label: "Pay at hotel",
-    hint: "Reserve now, pay the full amount at check-in.",
-    advancePercent: 0,
+    hint: "Reserve now, pay the full amount at the property.",
   },
   {
     key: "online",
     label: "Pay now",
     hint: "Pay the full amount online with UPI, card or net banking.",
-    advancePercent: 100,
   },
   {
     key: "partial_prepaid",
-    label: "Pay 30% now",
-    hint: "Pay a 30% advance online, the rest at the hotel.",
-    advancePercent: 30,
+    label: "Pay an advance",
+    hint: "Pay part online now (with a prepaid discount), the rest at the hotel.",
   },
 ];
 
-// ── Room selection ↔ URL (`sel=roomTypeId:qty,roomTypeId:qty`) ────────────────
+// ── Room selection ↔ URL (`sel=roomTypeId:qty`) ───────────────────────────────
 
 export const parseSelection = (raw) => {
   const out = {};
@@ -58,7 +52,7 @@ export const serialiseSelection = (selection) =>
 
 export const selectedUnits = (selection) => Object.values(selection).reduce((a, b) => a + (b > 0 ? b : 0), 0);
 
-// ── Client-side estimate ──────────────────────────────────────────────────────
+// ── Client-side estimate (property page only) ─────────────────────────────────
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
@@ -140,28 +134,105 @@ export const estimateQuote = ({ availability, roomTypes, selection, adults, chil
   };
 };
 
-export const advanceSplit = (total, modeKey) => {
-  const mode = PAYMENT_MODES.find((m) => m.key === modeKey) || PAYMENT_MODES[0];
-  const payNow = round2((total * mode.advancePercent) / 100);
-  return { payNow, payAtHotel: round2(total - payNow) };
+// ── Server calls ──────────────────────────────────────────────────────────────
+
+const toPage = (data) => ({
+  items: Array.isArray(data?.items) ? data.items : [],
+  page: Number(data?.page) || 1,
+  limit: Number(data?.limit) || 0,
+  total: Number(data?.total) || 0,
+});
+
+const enc = encodeURIComponent;
+
+/** Body shared by the quote and create calls. */
+export const bookingBody = ({ propertyId, roomTypeId, checkIn, checkOut, rooms, adults, children, paymentMode, couponCode }) => {
+  const body = {
+    propertyId,
+    roomTypeId,
+    checkIn,
+    checkOut,
+    rooms: Number(rooms) || 1,
+    adults: Number(adults) || 1,
+    children: Number(children) || 0,
+    paymentMode,
+  };
+  const code = String(couponCode || "").trim();
+  if (code) body.couponCode = code;
+  return body;
 };
 
-// ── Server calls (booking phase) ──────────────────────────────────────────────
+/** Server price for a stay (no hold) → Quote. */
+export const getQuote = (input) => userApi.post("/user/bookings/quote", bookingBody(input));
 
 /**
- * Price a selection. TODO(booking phase): replace the estimate with the server quote,
- * e.g. `return userApi.post("/user/bookings/quote", { propertyId, checkIn, checkOut,
- * adults, children, rooms: [{ roomTypeId, quantity }], paymentMode, couponCode })`,
- * and render its taxes/fees/discount lines on the checkout screen.
+ * Create the booking → `{ booking, payment }`. `payment` is null when nothing is payable
+ * online (pay at hotel, or the wallet covers it); otherwise a Razorpay order to open.
+ * Rejects with status 409 when the rooms sold out in the meantime.
  */
-export const getQuote = async (input) => estimateQuote(input);
-
-/**
- * Create the booking. TODO(booking phase): `return userApi.post("/user/bookings", payload)`
- * then, for online / partial_prepaid, open Razorpay with the returned order and call
- * the verify endpoint; finally navigate to /hotel/stays/:bookingId.
- */
-export const createBooking = async (payload) => {
-  if (!BOOKING_ENABLED) throw new Error("Booking opens soon. You can't confirm a stay just yet.");
-  return userApi.post("/user/bookings", payload);
+export const createBooking = (input, { guestDetails, specialRequests, useWallet }) => {
+  if (!BOOKING_ENABLED) return Promise.reject(new Error("Booking opens soon. You can't confirm a stay just yet."));
+  const body = { ...bookingBody(input), guestDetails, useWallet: Boolean(useWallet) };
+  if (specialRequests) body.specialRequests = specialRequests;
+  return userApi.post("/user/bookings", body).then((data) => ({ booking: data?.booking || null, payment: data?.payment || null }));
 };
+
+/** Razorpay success response → the updated booking (idempotent on the server). */
+export const verifyPayment = (bookingId, { razorpay_order_id, razorpay_payment_id, razorpay_signature }) =>
+  userApi
+    .post(`/user/bookings/${enc(bookingId)}/verify-payment`, {
+      razorpayOrderId: razorpay_order_id,
+      razorpayPaymentId: razorpay_payment_id,
+      razorpaySignature: razorpay_signature,
+    })
+    .then((data) => data?.booking || null);
+
+/** A fresh payment object for a still-held `awaiting_payment` booking. */
+export const retryPayment = (bookingId) => userApi.post(`/user/bookings/${enc(bookingId)}/retry-payment`);
+
+export const BOOKING_TABS = [
+  { key: "upcoming", label: "Upcoming" },
+  { key: "ongoing", label: "Ongoing" },
+  { key: "past", label: "Past" },
+  { key: "cancelled", label: "Cancelled" },
+];
+
+export const listBookings = ({ tab = "upcoming", page = 1, limit = 10 } = {}) =>
+  userApi.get("/user/bookings", { tab, page, limit }).then(toPage);
+
+export const getBooking = (bookingId) => userApi.get(`/user/bookings/${enc(bookingId)}`).then((data) => data?.booking || null);
+
+/** `{ refundAmount, refundPercent, walletRefund, gatewayRefund, policyText, freeCancellationUntil? }` */
+export const getCancelPreview = (bookingId) => userApi.get(`/user/bookings/${enc(bookingId)}/cancel-preview`);
+
+export const cancelBooking = (bookingId, reason) =>
+  userApi.post(`/user/bookings/${enc(bookingId)}/cancel`, { reason }).then((data) => data?.booking || null);
+
+/** Printable voucher; the token goes in the query so it opens in a plain new tab. */
+export const voucherUrl = (bookingId) => `${HOTEL_BASE}/user/bookings/${enc(bookingId)}/voucher?token=${enc(getUserToken())}`;
+
+export const openVoucher = (bookingId) => window.open(voucherUrl(bookingId), "_blank", "noopener,noreferrer");
+
+export const SUB_RATINGS = [
+  { key: "cleanliness", label: "Cleanliness" },
+  { key: "service", label: "Staff & service" },
+  { key: "location", label: "Location" },
+  { key: "value", label: "Value for money" },
+];
+
+export const submitReview = (payload) => userApi.post("/user/reviews", payload).then((data) => data?.review || null);
+
+/** Approved reviews, one page, plus the rating summary. */
+export const getPropertyReviews = (propertyId, { page = 1, limit = 5 } = {}) =>
+  publicApi.get(`/public/properties/${enc(propertyId)}/reviews`, { page, limit }).then((data) => ({
+    ...toPage(data),
+    summary: data?.summary || null,
+  }));
+
+export const listSaved = () =>
+  userApi.get("/user/saved").then((data) => (Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : []));
+
+export const setSaved = (propertyId, saved) =>
+  (saved ? userApi.post(`/user/saved/${enc(propertyId)}`) : userApi.del(`/user/saved/${enc(propertyId)}`)).then((data) =>
+    typeof data?.saved === "boolean" ? data.saved : saved
+  );

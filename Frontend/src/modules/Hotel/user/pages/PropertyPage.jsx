@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -20,6 +20,8 @@ import {
   Star,
 } from "lucide-react";
 import Gallery from "../components/Gallery";
+import HeartButton from "../components/HeartButton";
+import PropertyReviews from "../components/PropertyReviews";
 import RoomCard from "../components/RoomCard";
 import { DatesField, GuestsField, guestsSummary } from "../components/StayFields";
 import { BTN, CARD, RatingBadge, Skeleton, StateMessage, cx, stagger } from "../components/ui";
@@ -215,6 +217,15 @@ export default function PropertyPage() {
   const nights = diffDays(stay.checkIn, stay.checkOut);
   const roomsRef = useRef(null);
   const [shared, setShared] = useState(false);
+  const location = useLocation();
+  // Message handed over by checkout (e.g. the rooms sold out while booking).
+  const [notice, setNotice] = useState(() => location.state?.notice || "");
+  useEffect(() => {
+    if (location.state?.notice) {
+      setNotice(location.state.notice);
+      navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    }
+  }, [location.state, location.pathname, location.search, navigate]);
 
   const detail = useAsync(() => getProperty(slugOrId), slugOrId);
   const catalogue = useAsync(getCatalogue, "catalogue");
@@ -291,7 +302,8 @@ export default function PropertyPage() {
   const star = Number(property.typeDetails?.starRating) || 0;
   const amenities = property.amenities || [];
 
-  const setQty = (roomTypeId, qty) => writeParams(stay, { ...selection, [roomTypeId]: Math.max(0, qty) });
+  // One room type per booking: picking another type replaces the current pick.
+  const setQty = (roomTypeId, qty) => writeParams(stay, qty > 0 ? { [roomTypeId]: qty } : {});
   const setStay = (patch) => writeParams({ ...stay, ...patch }, selection);
   const chooseRooms = () => roomsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   const reserve = () => {
@@ -333,11 +345,28 @@ export default function PropertyPage() {
             <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Back
           </button>
           <div className="flex items-center gap-1">
+            <HeartButton propertyId={property._id} name={property.name} variant="ghost" />
             <button type="button" onClick={share} className={BTN.ghost} aria-label="Share this stay">
               <Share2 className="h-4 w-4" aria-hidden="true" /> <span className="hidden sm:inline">{shared ? "Link copied" : "Share"}</span>
             </button>
           </div>
         </div>
+
+        {notice && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-4 flex items-start justify-between gap-3 rounded-2xl bg-orange-50 p-4 text-sm font-medium text-[#C2410C] ring-1 ring-orange-200"
+            role="alert"
+          >
+            <span className="flex gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> {notice}
+            </span>
+            <button type="button" onClick={() => setNotice("")} className="shrink-0 font-semibold underline">
+              Dismiss
+            </button>
+          </motion.div>
+        )}
 
         <Gallery images={images} title={property.name} />
 
@@ -421,7 +450,7 @@ export default function PropertyPage() {
                 <h2 className="text-lg font-bold text-slate-900 sm:text-xl">Choose your room</h2>
                 {avail.data && !avail.loading && (
                   <span className="text-xs text-slate-500">
-                    Prices for {nightsLabel(nights)}, before taxes
+                    Prices for {nightsLabel(nights)}, before taxes · one room type per booking
                   </span>
                 )}
               </div>
@@ -541,25 +570,7 @@ export default function PropertyPage() {
             </Section>
 
             <Section id="reviews" title="Guest reviews" icon={MessageSquareText}>
-              {Number(property.totalReviews) > 0 ? (
-                <div className="flex items-center gap-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/70">
-                  <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#16A34A] text-2xl font-extrabold text-white">
-                    {Number(property.avgRating).toFixed(1)}
-                  </span>
-                  <span>
-                    <span className="block font-bold text-slate-900">{ratingLabel(property.avgRating)}</span>
-                    <span className="block text-sm text-slate-500">
-                      Based on {plural(Number(property.totalReviews), "review")}. Detailed reviews are coming soon.
-                    </span>
-                  </span>
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center">
-                  <MessageSquareText className="mx-auto h-8 w-8 text-slate-300" aria-hidden="true" />
-                  <p className="mt-2 font-semibold text-slate-700">No reviews yet</p>
-                  <p className="text-sm text-slate-500">Be one of the first guests to stay and share your experience.</p>
-                </div>
-              )}
+              <PropertyReviews propertyId={property._id} />
             </Section>
           </div>
 
