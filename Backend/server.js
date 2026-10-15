@@ -37,6 +37,7 @@ let manualAssignExpiryInterval = null;
 let fssaiExpiryInterval = null;
 let spScheduler = null;
 let ledgerNightlyInterval = null;
+let hotelExpiryInterval = null;
 
 const gracefulShutdown = async (signal) => {
     logger.info(`${signal} received, starting graceful shutdown`);
@@ -54,6 +55,7 @@ const gracefulShutdown = async (signal) => {
             if (fssaiExpiryInterval) clearInterval(fssaiExpiryInterval);
             if (spScheduler) spScheduler.stop();
             if (ledgerNightlyInterval) clearInterval(ledgerNightlyInterval);
+            if (hotelExpiryInterval) clearInterval(hotelExpiryInterval);
             logger.info('Graceful shutdown complete');
             process.exit(0);
         } catch (err) {
@@ -370,6 +372,29 @@ const startServer = async () => {
 
             runFssaiExpirySync();
             fssaiExpiryInterval = setInterval(runFssaiExpirySync, 60 * 60 * 1000);
+
+            // Hotel: unpaid booking holds past payment.expiresAt -> expired (rooms and any
+            // wallet part given back). Each expiry is a conditional transition, so an
+            // overlapping run elsewhere is harmless. Skipped while the hotel module is off.
+            Promise.all([
+                import('./src/modules/hotel/services/booking.service.js'),
+                import('./src/core/modules/moduleState.service.js'),
+                import('./src/core/modules/moduleRegistry.js'),
+            ])
+                .then(([{ expireStaleBookings }, { isModuleEnabled }, { MODULES }]) => {
+                    const tick = async () => {
+                        try {
+                            if (!(await isModuleEnabled(MODULES.HOTEL))) return;
+                            const { expired } = await expireStaleBookings();
+                            if (expired) logger.info(`Hotel: expired ${expired} unpaid booking(s)`);
+                        } catch (err) {
+                            logger.error(`Hotel booking expiry failed: ${err.message}`);
+                        }
+                    };
+                    hotelExpiryInterval = setInterval(tick, 60 * 1000);
+                    hotelExpiryInterval.unref?.();
+                })
+                .catch((err) => logger.error(`Hotel booking expiry failed to start: ${err.message}`));
         };
 
         if (mongoose.connection.readyState === 1) {
