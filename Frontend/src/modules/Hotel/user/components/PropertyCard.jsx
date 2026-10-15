@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ChevronRight, MapPin, Navigation } from "lucide-react";
+import HeartButton from "./HeartButton";
 import { PriceTag, RatingBadge, Skeleton, SmartImage, cx, fadeUp } from "./ui";
 import { amenityIcon, amenityLabel, typeLabel } from "../lib/catalogue";
 import { formatDistance, shortAddress } from "../lib/format";
@@ -12,7 +13,7 @@ export function ResultCard({ property: p, stayQs, catalogue, priority = false })
   const amenities = (p.amenities || []).slice(0, 4);
   const soldOut = p.available === false;
   return (
-    <motion.article variants={fadeUp}>
+    <motion.article variants={fadeUp} className="relative">
       <Link
         to={propertyHref(p, stayQs)}
         className="group grid overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-slate-900/5 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-200 sm:grid-cols-[260px_1fr]"
@@ -74,6 +75,7 @@ export function ResultCard({ property: p, stayQs, catalogue, priority = false })
           </div>
         </div>
       </Link>
+      <HeartButton propertyId={p._id} name={p.name} className="absolute right-3 top-3 sm:left-[212px] sm:right-auto" />
     </motion.article>
   );
 }
@@ -101,7 +103,7 @@ export function ResultCardSkeleton() {
 /** Compact vertical card for horizontal strips. */
 export function MiniCard({ property: p, stayQs }) {
   return (
-    <motion.div variants={fadeUp} className="w-[250px] shrink-0 snap-start sm:w-[280px]">
+    <motion.div variants={fadeUp} className="relative w-[250px] shrink-0 snap-start sm:w-[280px]">
       <Link
         to={propertyHref(p, stayQs)}
         className="group block overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-200"
@@ -135,6 +137,7 @@ export function MiniCard({ property: p, stayQs }) {
           </div>
         </div>
       </Link>
+      <HeartButton propertyId={p._id} name={p.name} className="absolute right-2 top-2" />
     </motion.div>
   );
 }
