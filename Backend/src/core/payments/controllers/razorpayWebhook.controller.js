@@ -120,6 +120,9 @@ export const handleRazorpayWebhook = async (req, res) => {
                 if (await handleHotelPaymentCaptured(paymentObj)) return res.status(200).json({ status: 'ok' });
             } catch (hotelErr) {
                 logger.error(`Webhook [payment.captured]: hotel lookup failed for RZ-Order ${rzOrderId}: ${hotelErr.message}`);
+                // A hotel booking whose confirmation hit a transient error: non-200 so
+                // Razorpay retries (confirmation is idempotent on the payment id).
+                if (hotelErr?.retryable) return res.status(500).json({ message: 'Temporary error; please retry' });
             }
 
             const source = await resolveOrderSource({ "payment.razorpay.orderId": rzOrderId });

@@ -1,5 +1,6 @@
 import { config } from '../config/env.js';
 import { logger } from '../utils/logger.js';
+import { redactUrl } from '../utils/redactUrl.js';
 import { MAX_UPLOAD_MB, MAX_UPLOAD_FILES } from './upload.js';
 
 const errorHandler = (err, req, res, next) => {
@@ -59,7 +60,7 @@ const errorHandler = (err, req, res, next) => {
     const requestId = req.requestId || '-';
 
     logger.error(
-        `[${requestId}] ${req.method} ${req.originalUrl} ${statusCode} - ${err.name || 'Error'} - ${message}`
+        `[${requestId}] ${req.method} ${redactUrl(req.originalUrl)} ${statusCode} - ${err.name || 'Error'} - ${message}`
     );
 
     // 5xx stacks are logged in EVERY environment. They used to be development-only,

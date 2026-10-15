@@ -13,6 +13,7 @@ import { apiRateLimiter } from './middleware/rateLimit.js';
 import { responseTimeLogger } from './middleware/responseTimeLogger.js';
 import { requestIdMiddleware } from './middleware/requestId.js';
 import { healthCheck } from './config/health.js';
+import { redactUrl } from './utils/redactUrl.js';
 
 
 const app = express();
@@ -117,6 +118,8 @@ app.use(cors({
     },
     credentials: true
 }));
+// morgan's :url is the raw originalUrl; mask query credentials (voucher ?token=/?vt=).
+morgan.token('url', (req) => redactUrl(req.originalUrl || req.url));
 app.use(morgan('dev'));
 app.use(express.json({
     limit: config.requestJsonLimit,
