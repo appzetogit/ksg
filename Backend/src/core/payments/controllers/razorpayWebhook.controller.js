@@ -112,6 +112,16 @@ export const handleRazorpayWebhook = async (req, res) => {
              * retry an event that will never succeed. The order is marked failed and the
              * event acknowledged, leaving a loud log line for reconciliation.
              */
+            // Hotel bookings (hotel_bookings.payment.razorpayOrderId) confirm through the
+            // hotel booking service: same amount check and idempotency as its
+            // /verify-payment. One indexed lookup; false means "not a hotel order".
+            try {
+                const { handleHotelPaymentCaptured } = await import('../../../modules/hotel/services/booking.service.js');
+                if (await handleHotelPaymentCaptured(paymentObj)) return res.status(200).json({ status: 'ok' });
+            } catch (hotelErr) {
+                logger.error(`Webhook [payment.captured]: hotel lookup failed for RZ-Order ${rzOrderId}: ${hotelErr.message}`);
+            }
+
             const source = await resolveOrderSource({ "payment.razorpay.orderId": rzOrderId });
             if (!source) {
                 logger.warn(`Webhook [payment.captured]: no order in any vertical for RZ-Order: ${rzOrderId}`);

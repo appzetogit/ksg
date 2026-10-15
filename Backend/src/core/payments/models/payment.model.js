@@ -10,14 +10,15 @@ import mongoose from 'mongoose';
  * going forward; `module` is kept in step by a pre-save hook so nothing that reads it
  * breaks.
  */
-export const PAYMENT_VERTICALS = Object.freeze(['food', 'quickCommerce', 'taxi', 'serviceProvider']);
+export const PAYMENT_VERTICALS = Object.freeze(['food', 'quickCommerce', 'taxi', 'serviceProvider', 'hotel']);
 
 /**
  * Model each vertical's payer and subject documents live in. Defaults reproduce the
  * previous hard refs exactly, so existing documents populate as they always did.
  */
 const PAYER_MODELS = Object.freeze(['FoodUser', 'TaxiUser', 'SPUser', 'QCUser']);
-const SUBJECT_MODELS = Object.freeze(['FoodOrder', 'QCOrder', 'TaxiRide', 'SPBooking']);
+// Hotel guests are FoodUser customers (already listed); their subject is a HotelBooking.
+const SUBJECT_MODELS = Object.freeze(['FoodOrder', 'QCOrder', 'TaxiRide', 'SPBooking', 'HotelBooking']);
 
 const paymentSchema = new mongoose.Schema(
     {

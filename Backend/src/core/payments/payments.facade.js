@@ -20,6 +20,7 @@ const SUBJECT_BY_VERTICAL = Object.freeze({
     quickCommerce: 'QCOrder',
     taxi: 'TaxiRide',
     serviceProvider: 'SPBooking',
+    hotel: 'HotelBooking',
 });
 
 const PAYER_BY_VERTICAL = Object.freeze({
@@ -27,6 +28,7 @@ const PAYER_BY_VERTICAL = Object.freeze({
     quickCommerce: 'QCUser',
     taxi: 'TaxiUser',
     serviceProvider: 'SPUser',
+    hotel: 'FoodUser',
 });
 
 /**
