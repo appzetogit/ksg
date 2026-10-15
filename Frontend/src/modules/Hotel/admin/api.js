@@ -21,6 +21,7 @@ const withRefresh = async (call) => {
 
 const get = (url, params) => withRefresh(() => adminApi.get(url, params));
 const put = (url, body) => withRefresh(() => adminApi.put(url, body));
+const post = (url, body) => withRefresh(() => adminApi.post(url, body));
 
 /** Drop empty filters so the server never sees `status=` or `q=`. */
 const clean = (params = {}) =>
@@ -40,4 +41,21 @@ export const hotelAdmin = {
   verifyDocuments: (id, verificationStatus, adminRemark) =>
     put(`/admin/properties/${id}/documents/verify`, { verificationStatus, ...(adminRemark ? { adminRemark } : {}) }),
   setLive: (id, isLive) => put(`/admin/properties/${id}/live`, { isLive }),
+
+  // Phase 4–5
+  bookings: (params) => get("/admin/bookings", clean(params)),
+  booking: (id) => get(`/admin/bookings/${id}`),
+  setBookingStatus: (id, { status, reason, force }) =>
+    put(`/admin/bookings/${id}/status`, { status, ...(reason ? { reason } : {}), ...(force ? { force: true } : {}) }),
+  refundBooking: (id, amount, reason) => post(`/admin/bookings/${id}/refund`, { amount, reason }),
+
+  reviews: (params) => get("/admin/reviews", clean(params)),
+  setReviewStatus: (id, status) => put(`/admin/reviews/${id}/status`, { status }),
+
+  withdrawals: (params) => get("/admin/withdrawals", clean(params)),
+  setWithdrawalStatus: (id, status, { note, utr } = {}) =>
+    put(`/admin/withdrawals/${id}/status`, { status, ...(note ? { note } : {}), ...(utr ? { utr } : {}) }),
+
+  settings: () => get("/admin/settings"),
+  saveSettings: (patch) => put("/admin/settings", patch),
 };

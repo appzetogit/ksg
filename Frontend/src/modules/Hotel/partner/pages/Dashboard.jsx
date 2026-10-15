@@ -5,21 +5,24 @@ import {
   ArrowRight,
   Building2,
   CalendarCheck2,
+  CalendarDays,
   CalendarRange,
   CheckCircle2,
   Circle,
-  Clock3,
   IndianRupee,
   LogIn,
   LogOut,
+  Percent,
   Plus,
   Radio,
 } from "lucide-react";
 import { partnerApi } from "../../shared/hotelApi";
 import { usePartner } from "../lib/PartnerContext";
 import { BASE_PATH } from "../lib/constants";
-import { asList, money } from "../lib/utils";
-import { Card, LinkButton, PageHeader, Skeleton, cx } from "../components/ui";
+import { asList, money, todayYmd } from "../lib/utils";
+import { ymdOf } from "../lib/bookings";
+import { Card, LinkButton, PageHeader, SectionTitle, Skeleton, cx } from "../components/ui";
+import { BookingCard, PaymentBadge } from "../components/bookings";
 import StatusBanner from "../components/StatusBanner";
 
 const ZERO = {
@@ -28,27 +31,82 @@ const ZERO = {
   todayDepartures: 0,
   upcomingBookings: 0,
   revenueThisMonth: 0,
+  occupancyThisMonth: 0,
+  recentBookings: [],
 };
 
-function Stat({ icon: Icon, label, value, tint, note, delay = 0 }) {
+function Stat({ icon: Icon, label, value, tint, note, delay = 0, to }) {
+  const card = (
+    <Card className={cx("h-full p-4 md:p-5", to && "transition group-hover:border-slate-300 group-hover:shadow-md")}>
+      <span className={cx("flex h-10 w-10 items-center justify-center rounded-xl", tint)}>
+        <Icon className="h-5 w-5" />
+      </span>
+      <p className="mt-4 text-2xl font-bold tracking-tight text-[#071A47] md:text-3xl">{value}</p>
+      <p className="mt-0.5 text-sm text-slate-500">{label}</p>
+      {note && <p className="mt-1 text-[11px] font-medium text-slate-400">{note}</p>}
+    </Card>
+  );
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay }}>
-      <Card className="h-full p-4 md:p-5">
-        <span className={cx("flex h-10 w-10 items-center justify-center rounded-xl", tint)}>
-          <Icon className="h-5 w-5" />
-        </span>
-        <p className="mt-4 text-2xl font-bold tracking-tight text-[#071A47] md:text-3xl">{value}</p>
-        <p className="mt-0.5 text-sm text-slate-500">{label}</p>
-        {note && <p className="mt-1 text-[11px] font-medium text-slate-400">{note}</p>}
-      </Card>
+      {to ? (
+        <Link to={to} className="group block h-full focus:outline-none">
+          {card}
+        </Link>
+      ) : (
+        card
+      )}
     </motion.div>
   );
 }
 
+const pct = (v) => `${Math.round(Math.min(1, Math.max(0, Number(v) || 0)) * 100)}%`;
+
+function QuickList({ title, icon: Icon, items, empty, to }) {
+  return (
+    <Card className="p-5">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2 text-base font-semibold text-slate-900">
+          <Icon className="h-4 w-4 text-[#FF7A00]" /> {title}
+          {items && <span className="text-sm font-normal text-slate-400">({items.length})</span>}
+        </h2>
+        <Link to={to} className="text-sm font-medium text-[#0B2A6F] hover:underline">
+          View all
+        </Link>
+      </div>
+      {!items ? (
+        <div className="space-y-2">
+          <Skeleton className="h-12" />
+          <Skeleton className="h-12" />
+        </div>
+      ) : items.length === 0 ? (
+        <p className="py-4 text-center text-sm text-slate-500">{empty}</p>
+      ) : (
+        <ul className="divide-y divide-slate-100">
+          {items.slice(0, 5).map((b) => (
+            <li key={b._id}>
+              <Link to={`${BASE_PATH}/bookings/${b._id}`} className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-2.5 hover:bg-slate-50">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-900">{b.guestDetails?.name || "Guest"}</p>
+                  <p className="truncate text-xs text-slate-500">
+                    {b.rooms || 1} × {b.snapshot?.roomTypeName || "Room"}
+                    {b.snapshot?.propertyName ? ` · ${b.snapshot.propertyName}` : ""}
+                  </p>
+                </div>
+                <PaymentBadge booking={b} />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
 export default function Dashboard() {
-  const { partner, profileComplete } = usePartner();
+  const { partner, profileComplete, isApproved } = usePartner();
   const [stats, setStats] = useState(null);
   const [properties, setProperties] = useState(null);
+  const [today, setToday] = useState({ arrivals: null, departures: null });
 
   useEffect(() => {
     let alive = true;
@@ -65,7 +123,29 @@ export default function Dashboard() {
     };
   }, []);
 
-  // Before the dashboard endpoint is ready (or for a partner not yet approved) the
+  // Today's arrivals and departures, for approved partners (bookings need approval).
+  useEffect(() => {
+    if (!isApproved) return undefined;
+    let alive = true;
+    const day = todayYmd();
+    Promise.all([
+      partnerApi.get("/partner/bookings", { status: "confirmed", from: day, to: day, limit: 50 }),
+      partnerApi.get("/partner/bookings", { status: "checked_in", limit: 100 }),
+    ])
+      .then(([arr, dep]) => {
+        if (!alive) return;
+        setToday({
+          arrivals: asList(arr).filter((b) => ymdOf(b.checkIn) === day),
+          departures: asList(dep).filter((b) => ymdOf(b.checkOut) <= day),
+        });
+      })
+      .catch(() => alive && setToday({ arrivals: [], departures: [] }));
+    return () => {
+      alive = false;
+    };
+  }, [isApproved]);
+
+  // Before the dashboard endpoint answers (or for a partner not yet approved) the
   // property counts come from the list, booking numbers stay at zero.
   const list = properties || [];
   const data =
@@ -94,6 +174,8 @@ export default function Dashboard() {
   ];
   const allDone = steps.every((s) => s.done);
   const firstName = (partner?.name || "").split(" ")[0];
+  const recent = asList(data?.recentBookings);
+  const bookingsTo = (tab) => `${BASE_PATH}/bookings${tab ? `?tab=${tab}` : ""}`;
 
   return (
     <div>
@@ -116,26 +198,49 @@ export default function Dashboard() {
           Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-36" />)
         ) : (
           <>
-            <Stat icon={Building2} label="Properties" value={data.properties.total} tint="bg-blue-50 text-[#0B2A6F]" />
-            <Stat icon={Radio} label="Live now" value={data.properties.live} tint="bg-green-50 text-[#16A34A]" delay={0.03} />
-            <Stat icon={Clock3} label="Under review" value={data.properties.pending} tint="bg-amber-50 text-amber-600" delay={0.06} />
+            <Stat icon={LogIn} label="Arrivals today" value={data.todayArrivals} tint="bg-sky-50 text-sky-600" to={bookingsTo("today")} />
+            <Stat
+              icon={LogOut}
+              label="Departures today"
+              value={data.todayDepartures}
+              tint="bg-violet-50 text-violet-600"
+              delay={0.03}
+              to={bookingsTo("today")}
+            />
+            <Stat
+              icon={CalendarCheck2}
+              label="Upcoming bookings"
+              value={data.upcomingBookings}
+              tint="bg-teal-50 text-teal-600"
+              delay={0.06}
+              to={bookingsTo("upcoming")}
+            />
             <Stat
               icon={IndianRupee}
               label="Revenue this month"
               value={money(data.revenueThisMonth)}
               tint="bg-orange-50 text-[#E85D04]"
               delay={0.09}
+              to={`${BASE_PATH}/earnings`}
             />
-            <Stat icon={LogIn} label="Arrivals today" value={data.todayArrivals} tint="bg-sky-50 text-sky-600" delay={0.12} note="Bookings coming soon" />
-            <Stat icon={LogOut} label="Departures today" value={data.todayDepartures} tint="bg-violet-50 text-violet-600" delay={0.15} note="Bookings coming soon" />
             <Stat
-              icon={CalendarCheck2}
-              label="Upcoming bookings"
-              value={data.upcomingBookings}
-              tint="bg-teal-50 text-teal-600"
-              delay={0.18}
-              note="Bookings coming soon"
+              icon={Percent}
+              label="Occupancy this month"
+              value={pct(data.occupancyThisMonth)}
+              tint="bg-green-50 text-[#16A34A]"
+              delay={0.12}
+              note="Room-nights sold of available"
             />
+            <Stat
+              icon={Building2}
+              label="Properties"
+              value={data.properties.total}
+              tint="bg-blue-50 text-[#0B2A6F]"
+              delay={0.15}
+              note={data.properties.pending ? `${data.properties.pending} under review` : undefined}
+              to={`${BASE_PATH}/properties`}
+            />
+            <Stat icon={Radio} label="Live now" value={data.properties.live} tint="bg-green-50 text-[#16A34A]" delay={0.18} />
             <Link to={`${BASE_PATH}/inventory`} className="group">
               <Card className="flex h-full flex-col justify-between bg-gradient-to-br from-[#0B2A6F] to-[#071A47] p-4 text-white md:p-5">
                 <CalendarRange className="h-6 w-6 text-[#FF9A3D]" />
@@ -150,6 +255,43 @@ export default function Dashboard() {
           </>
         )}
       </div>
+
+      {isApproved && (
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          <QuickList
+            title="Arriving today"
+            icon={LogIn}
+            items={today.arrivals}
+            empty="No arrivals today."
+            to={bookingsTo("today")}
+          />
+          <QuickList
+            title="Leaving today"
+            icon={LogOut}
+            items={today.departures}
+            empty="No departures today."
+            to={bookingsTo("today")}
+          />
+        </div>
+      )}
+
+      {recent.length > 0 && (
+        <section className="mt-6">
+          <SectionTitle
+            title="Recent bookings"
+            action={
+              <Link to={bookingsTo("upcoming")} className="inline-flex items-center gap-1 text-sm font-medium text-[#0B2A6F] hover:underline">
+                <CalendarDays className="h-4 w-4" /> All bookings
+              </Link>
+            }
+          />
+          <div className="grid gap-3 md:grid-cols-2">
+            {recent.slice(0, 6).map((b) => (
+              <BookingCard key={b._id} booking={b} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {!allDone && properties && (
         <Card className="mt-6 p-5 md:p-6">
