@@ -96,7 +96,7 @@ function CheckoutSkeleton() {
 }
 
 export default function CheckoutPage() {
-  useTitle("Review your booking");
+  useTitle("Review your booking", { noindex: true });
   const [params] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();

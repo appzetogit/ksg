@@ -301,7 +301,7 @@ const run = async () => {
   }
   if (created.length) {
     console.log('\nDemo properties:');
-    for (const [name, slug, id] of created) console.log(`  ${name.padEnd(20)} /hotel/property/${slug}   (${id})`);
+    for (const [name, slug, id] of created) console.log(`  ${name.padEnd(20)} /hotel/p/${slug}   (${id})`);
   }
   console.log(`\nDemo hotel partner login: ${PARTNER.phone} (OTP 1234 while mock OTP is on)`);
   if (notes.length) {

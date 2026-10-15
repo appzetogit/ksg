@@ -85,7 +85,13 @@ function ServiceCard({ service, busyKey, onToggleService, onToggleZone }) {
           </div>
         )}
 
-        {service.zones.length === 0 && !service.zonesError && (
+        {service.hasZones === false && (
+          <p className="text-sm text-muted-foreground">
+            {service.label} has no zones; the switch above applies everywhere.
+          </p>
+        )}
+
+        {service.hasZones !== false && service.zones.length === 0 && !service.zonesError && (
           <p className="text-sm text-muted-foreground">
             No {service.label} zones drawn yet. The switch above still applies everywhere.
           </p>

@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { Heart, Home, LogIn, Luggage, ArrowLeft } from "lucide-react";
+import { Heart, Home, LogIn, Luggage, ArrowLeft, LayoutGrid, Utensils, Car, Sparkles } from "lucide-react";
 import ksgLogo from "@/modules/LandingPage/assets/ksg-logo.jpg";
 import { cx } from "./ui";
+import Popover, { useOutsideClose } from "./Popover";
 import { LOGIN_PATH, PROFILE_PATH, getUserProfile, getUserToken } from "../lib/session";
 
 const LINKS = [
@@ -10,6 +11,51 @@ const LINKS = [
   { to: "/hotel/stays", label: "My stays", icon: Luggage },
   { to: "/hotel/saved", label: "Saved", icon: Heart },
 ];
+
+// The rest of KSG, one tap away from the hotel header.
+const KSG_SERVICES = [
+  { to: "/", label: "KSG home", sub: "All services", icon: Sparkles },
+  { to: "/food/user", label: "Food", sub: "Order from restaurants", icon: Utensils },
+  { to: "/taxi/user", label: "Rides", sub: "Bike, auto & cab", icon: Car },
+];
+
+function KsgServicesMenu() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const close = useCallback(() => setOpen(false), []);
+  useOutsideClose(ref, open, close);
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label="KSG services"
+        aria-expanded={open}
+        className="flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-sm font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 sm:px-3"
+      >
+        <LayoutGrid className="h-5 w-5 sm:h-4 sm:w-4" aria-hidden="true" />
+        <span className="hidden md:inline">Services</span>
+      </button>
+      <Popover open={open} onClose={close} label="KSG services" align="right" className="sm:w-72">
+        <ul className="space-y-1">
+          {KSG_SERVICES.map(({ to, label, sub, icon: Icon }) => (
+            <li key={to}>
+              <Link to={to} onClick={close} className="flex items-center gap-3 rounded-xl p-2.5 transition hover:bg-slate-50">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#0B2A6F]/5 text-[#0B2A6F]">
+                  <Icon className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-slate-800">{label}</span>
+                  <span className="block text-xs text-slate-500">{sub}</span>
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </Popover>
+    </div>
+  );
+}
 
 export function HotelHeader() {
   const location = useLocation();
@@ -63,6 +109,7 @@ export function HotelHeader() {
               )}
             </NavLink>
           ))}
+          <KsgServicesMenu />
           {session.token ? (
             <Link
               to={PROFILE_PATH}

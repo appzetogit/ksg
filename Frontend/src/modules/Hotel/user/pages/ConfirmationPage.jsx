@@ -51,7 +51,7 @@ export default function ConfirmationPage() {
   const token = getUserToken();
   const res = useAsync(() => getBooking(id), id, { enabled: Boolean(token) });
   const payment = usePayBooking();
-  useTitle("Booking confirmed");
+  useTitle("Booking confirmed", { noindex: true });
 
   if (!token) {
     return (

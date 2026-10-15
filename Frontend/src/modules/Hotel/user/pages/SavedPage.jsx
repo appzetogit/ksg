@@ -30,7 +30,7 @@ function Empty() {
 }
 
 export default function SavedPage() {
-  useTitle("Saved stays");
+  useTitle("Saved stays", { noindex: true });
   const navigate = useNavigate();
   const token = getUserToken();
   const res = useAsync(listSaved, "saved", { enabled: Boolean(token) });

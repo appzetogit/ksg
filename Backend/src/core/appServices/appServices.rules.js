@@ -28,15 +28,22 @@
 /**
  * The services the app shows, keyed the way the admin panel names them.
  * `zones` is the map each service is drawn on -- each has its own collection.
+ * `zones: null` means the service has no zone map of its own: hotels are found
+ * by city and distance, not inside a delivery polygon, so only the
+ * platform-wide switch applies (the web app opens it at /hotel).
  */
 export const APP_SERVICES = Object.freeze([
     { key: 'food', label: 'Food', zones: 'food' },
     { key: 'quick', label: 'Quick Commerce', zones: 'quick' },
     { key: 'medical', label: 'Medical', zones: 'medical' },
     { key: 'taxi', label: 'Taxi', zones: 'taxi' },
+    { key: 'hotel', label: 'Hotels', zones: null },
 ]);
 
 export const APP_SERVICE_KEYS = Object.freeze(APP_SERVICES.map((s) => s.key));
+
+/** Does this service have a zone map (and so zone switches) of its own? */
+export const hasZones = (key) => Boolean(APP_SERVICES.find((s) => s.key === String(key))?.zones);
 
 export const isAppService = (key) => APP_SERVICE_KEYS.includes(String(key));
 

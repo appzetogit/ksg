@@ -1,2 +1,9 @@
 User-agent: *
 Allow: /
+# KSG Stays: /hotel, /hotel/search and /hotel/p/<slug> are public; these are per-user screens.
+Disallow: /hotel/checkout
+Disallow: /hotel/booking/
+Disallow: /hotel/bookings/
+Disallow: /hotel/stays
+Disallow: /hotel/saved
+Disallow: /hotel/partner
