@@ -54,7 +54,9 @@ const hotelPropertySchema = new mongoose.Schema(
             country: { type: String, trim: true, default: 'India' },
             fullAddress: { type: String, trim: true },
         },
-        location: { type: pointSchema, required: true },
+        // Optional on a draft (the wizard saves after the basics step); submit requires it.
+        // Never store a Point without coordinates: leave the field unset instead.
+        location: { type: pointSchema, default: undefined },
         zoneId: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodZone' },
         nearbyPlaces: [
             {
@@ -65,7 +67,9 @@ const hotelPropertySchema = new mongoose.Schema(
             },
         ],
 
-        coverImage: { type: String, required: true },
+        // Optional on a draft (the wizard saves before photos are uploaded); submit
+        // refuses a property without a cover and at least 3 photos in total.
+        coverImage: { type: String, trim: true, default: '' },
         images: { type: [String], default: [] },
         amenities: {
             type: [String],
