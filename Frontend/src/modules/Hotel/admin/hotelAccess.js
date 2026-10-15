@@ -1,4 +1,6 @@
+import { useMemo } from "react";
 import { HOTEL_ENABLED } from "@/config/features";
+import { can, hasAdminSession, useAdminAccess } from "@food/utils/adminAccess";
 
 /** The signed-in admin's stored profile (set by /admin/login), or null. */
 export function readAdminProfile() {
@@ -23,4 +25,25 @@ export function canOpenHotelPanel(admin = readAdminProfile()) {
   const access = admin.servicesAccess;
   if (!Array.isArray(access) || access.length === 0) return true;
   return access.includes("hotel");
+}
+
+// Screen -> permission table lives with the other panels' (Food utils/adminAccess.js).
+export { hotelResourceForPath } from "@food/utils/adminAccess";
+
+/**
+ * What the signed-in admin may do in the hotel panel. Superadmins can do
+ * everything; a sub-admin gets the hotel_* sections they were given (read or
+ * write). `loading` is true while a signed-in admin's access is still unknown.
+ */
+export function useHotelAccess() {
+  const access = useAdminAccess();
+  return useMemo(
+    () => ({
+      access,
+      loading: !access && hasAdminSession(),
+      canRead: (resource) => can(access, resource, "read"),
+      canWrite: (resource) => can(access, resource, "write"),
+    }),
+    [access],
+  );
 }

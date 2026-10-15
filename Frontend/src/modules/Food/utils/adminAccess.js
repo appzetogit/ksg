@@ -265,6 +265,23 @@ const TAXI_PAGE_RULES = [
   ["/taxi/admin/settings", "settings"],
 ]
 
+/*
+ * Hotel admin screens (Hotel/admin, its own layout). Mirrors HOTEL_ADMIN_RULES
+ * in Backend/src/core/admin/adminAccessPolicy.js.
+ */
+export const HOTEL_PAGE_RULES = [
+  ["/admin/hotel/dashboard", "dashboard"],
+  ["/admin/hotel/partners", "hotel_partners"],
+  ["/admin/hotel/properties", "hotel_properties"],
+  ["/admin/hotel/bookings", "hotel_bookings"],
+  ["/admin/hotel/reviews", "hotel_reviews"],
+  ["/admin/hotel/withdrawals", "hotel_withdrawals"],
+  ["/admin/hotel/settings", "hotel_settings"],
+]
+
+export const hotelResourceForPath = (pathname = "") =>
+  (HOTEL_PAGE_RULES.find(([p]) => pathname === p || pathname.startsWith(`${p}/`)) || [])[1] || null
+
 /** Can this admin open the screen at `pathname`? */
 export function canOpenPath(access, pathname) {
   if (!isRestricted(access)) return true
@@ -274,6 +291,10 @@ export function canOpenPath(access, pathname) {
     if (!hasPanel(access, "taxi")) return false
     const hit = TAXI_PAGE_RULES.find(([prefix]) => pathname.startsWith(prefix))
     return can(access, hit ? hit[1] : "settings", "read")
+  }
+  if (pathname.startsWith("/admin/hotel")) {
+    if (!hasPanel(access, "hotel")) return false
+    return can(access, hotelResourceForPath(pathname) || "dashboard", "read")
   }
   const resource = resourceForPath(pathname)
   if (resource === "__owner__") return false

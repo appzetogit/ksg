@@ -20,6 +20,7 @@ import {
   TableSkeleton,
   cx,
 } from "../components/ui";
+import { useHotelAccess } from "../hotelAccess";
 
 const TABS = ["pending", "approved", "rejected", "all"];
 const LIMIT = 20;
@@ -55,6 +56,8 @@ function Stars({ value }) {
 const idOf = (v) => (v && typeof v === "object" ? v._id : v);
 
 export default function ReviewsList() {
+  const { canWrite } = useHotelAccess();
+  const canModerate = canWrite("hotel_reviews");
   const [params, update] = useListParams({ status: "pending", propertyId: "", page: 1 });
   const [pending, setPending] = useState(null); // { review, status }
 
@@ -154,12 +157,12 @@ export default function ReviewsList() {
                       )}
                     </div>
                     <div className="flex shrink-0 gap-2">
-                      {r.status !== "approved" && (
+                      {canModerate && r.status !== "approved" && (
                         <Button tone="success" icon={CheckCircle2} onClick={() => setPending({ review: r, status: "approved" })}>
                           Approve
                         </Button>
                       )}
-                      {r.status !== "rejected" && (
+                      {canModerate && r.status !== "rejected" && (
                         <Button tone="danger" icon={XCircle} onClick={() => setPending({ review: r, status: "rejected" })}>
                           Reject
                         </Button>

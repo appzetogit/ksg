@@ -1,5 +1,5 @@
 /**
- * One permission model for every admin panel: Food, Quick Commerce, Medical, Taxi.
+ * One permission model for every admin panel: Food, Quick Commerce, Medical, Taxi, Hotels.
  *
  * Why this exists: each vertical grew its own permission list, and none of them
  * was enforced on the API. Food checked a permission on 9 of ~300 routes, quick
@@ -8,7 +8,7 @@
  * the sidebar was the only thing that looked restricted, and it did not filter.
  *
  * The model:
- *   - servicesAccess  which panels the admin may open (food, quickCommerce, medical, taxi)
+ *   - servicesAccess  which panels the admin may open (food, quickCommerce, medical, taxi, hotel)
  *   - permissions     'resource.read' / 'resource.write' strings, the same resource
  *                     names in every panel ("Orders" means food orders, grocery
  *                     orders, medicine orders and taxi rides alike)
@@ -26,6 +26,17 @@ export const ADMIN_SERVICES = [
   { key: 'quickCommerce', label: 'Quick Commerce' },
   { key: 'medical', label: 'Medical' },
   { key: 'taxi', label: 'Taxi' },
+  /*
+   * Hotels: its admin API (modules/hotel/routes/index.js) runs enforceAdminAccess
+   * with HOTEL_ADMIN_RULES below, so a sub-admin can be given it like any panel.
+   *
+   * 'serviceProvider' is deliberately NOT listed: its admin API never passes through
+   * enforceAdminAccess (it only checks servicesAccess, modules/serviceProvider/utils/
+   * serviceAccess.js) and its panel is superadmin-only (Frontend adminAccess.js,
+   * canOpenPath '/admin/sp'). Offering it here would hand a "restricted" sub-admin an
+   * unrestricted panel. Hotel was in the same position until its rules existed.
+   */
+  { key: 'hotel', label: 'Hotels' },
 ];
 export const ADMIN_SERVICE_KEYS = ADMIN_SERVICES.map((s) => s.key);
 
@@ -40,7 +51,7 @@ export const ADMIN_PERMISSION_CATALOG = [
   {
     group: 'Overview',
     resources: [
-      { key: 'dashboard', label: 'Dashboard', hint: 'Home screen, live status and counts', services: ALL },
+      { key: 'dashboard', label: 'Dashboard', hint: 'Home screen, live status and counts', services: [...ALL, 'hotel'] },
       { key: 'reports', label: 'Reports', hint: 'Transaction, order, tax and earnings reports', services: ALL },
     ],
   },
@@ -65,8 +76,25 @@ export const ADMIN_PERMISSION_CATALOG = [
     resources: [
       { key: 'wallet', label: 'Wallets & payouts', hint: 'Withdrawals, wallets, balance adjustments', services: ALL },
       { key: 'fee_settings', label: 'Fees & pricing', hint: 'Delivery and platform fees, fares', services: ALL },
-      { key: 'promotions', label: 'Offers & coupons', hint: 'Coupons, cashback, 99 store', services: ALL },
+      { key: 'promotions', label: 'Offers & coupons', hint: 'Coupons, cashback, 99 store', services: [...ALL, 'hotel'] },
       { key: 'referrals', label: 'Referrals', hint: 'Referral rewards', services: ALL },
+    ],
+  },
+  {
+    /*
+     * The hotel panel's own sections (HOTEL_ADMIN_RULES). Kept apart from the shared
+     * resources above on purpose: a hotel partner, a property's KYC documents and a
+     * stay booking are not what "Restaurants & stores" or "Orders" grant elsewhere,
+     * so a food sub-admin's orders.write never lets them refund hotel stays.
+     */
+    group: 'Hotels',
+    resources: [
+      { key: 'hotel_partners', label: 'Hotel partners', hint: 'Partner accounts: approve, suspend, block', services: ['hotel'] },
+      { key: 'hotel_properties', label: 'Hotel properties', hint: 'Listings, KYC documents, approval, live switch', services: ['hotel'] },
+      { key: 'hotel_bookings', label: 'Hotel bookings', hint: 'Stays, status changes, refunds', services: ['hotel'] },
+      { key: 'hotel_reviews', label: 'Hotel reviews', hint: 'Approve or hide guest reviews', services: ['hotel'] },
+      { key: 'hotel_withdrawals', label: 'Hotel payouts', hint: 'Partner withdrawal requests', services: ['hotel'] },
+      { key: 'hotel_settings', label: 'Hotel settings', hint: 'Commission, GST slabs, payment hold, payouts', services: ['hotel'] },
     ],
   },
   {
@@ -204,7 +232,7 @@ export function servicesForApi(api) {
 
 /**
  * The single decision. `service` is the panel's API ('food' | 'quickCommerce' |
- * 'taxi'); `resource` is what the request touches, OPEN for shared lookups, or
+ * 'taxi' | 'hotel'); `resource` is what the request touches, OPEN for shared lookups, or
  * null when the path is not mapped.
  */
 export const OPEN = '__open__';
@@ -350,6 +378,23 @@ const TAXI_ADMIN_RULES = [
   rule(/^\/on-boarding(\/|$)/, 'cms'),
 ];
 
+/*
+ * Hotel admin API, relative to /v1/hotel/admin (modules/hotel/routes/index.js).
+ * Every route there is mapped; a new one stays closed to sub-admin writes until it
+ * is added here (decideAdminAccess: unmapped_write).
+ */
+const HOTEL_ADMIN_RULES = [
+  rule(/^\/overview(\/|$)/, 'dashboard'),
+  rule(/^\/partners(\/|$)/, 'hotel_partners'),
+  rule(/^\/properties(\/|$)/, 'hotel_properties'),
+  rule(/^\/bookings(\/|$)/, 'hotel_bookings'),
+  rule(/^\/reviews(\/|$)/, 'hotel_reviews'),
+  rule(/^\/withdrawals(\/|$)/, 'hotel_withdrawals'),
+  rule(/^\/settings(\/|$)/, 'hotel_settings'),
+  // Hotel coupons (admin CRUD), under the shared Offers & coupons permission.
+  rule(/^\/coupons(\/|$)/, 'promotions'),
+];
+
 function resolveFrom(rules, path, method) {
   const m = String(method || 'GET').toUpperCase();
   const p = String(path || '').split('?')[0];
@@ -362,5 +407,6 @@ function resolveFrom(rules, path, method) {
 
 export const resolveStoreAdminResource = (path, method) => resolveFrom(STORE_ADMIN_RULES, path, method);
 export const resolveTaxiAdminResource = (path, method) => resolveFrom(TAXI_ADMIN_RULES, path, method);
+export const resolveHotelAdminResource = (path, method) => resolveFrom(HOTEL_ADMIN_RULES, path, method);
 
 export const isWriteMethod = (method) => !['GET', 'HEAD', 'OPTIONS'].includes(String(method || 'GET').toUpperCase());

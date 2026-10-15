@@ -17,12 +17,13 @@ import {
 } from "lucide-react"
 import { adminAccountsAPI } from "@food/api"
 import { refreshAdminAccess } from "@food/utils/adminAccess"
+import { HOTEL_ENABLED } from "@/config/features"
 
 /**
  * Admin accounts, for every panel.
  *
  * One list and one form whichever panel it is opened from (Food, Quick
- * Commerce, Medical or Taxi): an account is a person, and the same person can be
+ * Commerce, Medical, Taxi or Hotels): an account is a person, and the same person can be
  * given several panels. What each sub-admin may do is enforced by the server;
  * this screen is where it is decided.
  */
@@ -32,6 +33,7 @@ const PANEL_TONE = {
   quickCommerce: "bg-emerald-50 text-emerald-800 ring-emerald-200",
   medical: "bg-sky-50 text-sky-800 ring-sky-200",
   taxi: "bg-amber-50 text-amber-900 ring-amber-200",
+  hotel: "bg-indigo-50 text-indigo-800 ring-indigo-200",
 }
 const ROLE_META = {
   owner: { label: "Owner", Icon: Crown, tone: "bg-neutral-900 text-white" },
@@ -44,10 +46,10 @@ const PRESETS = [
   {
     key: "ops",
     label: "Operations",
-    perms: ["dashboard.read", "orders.write", "restaurants.write", "foods.write", "categories.write", "delivery.write", "zones.read", "customers.read", "support.write", "fleet.write"],
+    perms: ["dashboard.read", "orders.write", "restaurants.write", "foods.write", "categories.write", "delivery.write", "zones.read", "customers.read", "support.write", "fleet.write", "hotel_partners.write", "hotel_properties.write", "hotel_bookings.write"],
   },
-  { key: "support", label: "Support desk", perms: ["dashboard.read", "orders.read", "customers.write", "support.write", "delivery.read"] },
-  { key: "finance", label: "Finance", perms: ["dashboard.read", "reports.read", "wallet.write", "fee_settings.write", "orders.read", "promotions.read"] },
+  { key: "support", label: "Support desk", perms: ["dashboard.read", "orders.read", "customers.write", "support.write", "delivery.read", "hotel_bookings.read", "hotel_reviews.write"] },
+  { key: "finance", label: "Finance", perms: ["dashboard.read", "reports.read", "wallet.write", "fee_settings.write", "orders.read", "promotions.read", "hotel_bookings.read", "hotel_withdrawals.write"] },
   { key: "marketing", label: "Marketing", perms: ["dashboard.read", "promotions.write", "referrals.write", "cms.write", "reports.read"] },
 ]
 
@@ -63,6 +65,25 @@ const when = (iso) => {
   if (!iso) return ""
   const d = new Date(iso)
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+}
+
+/*
+ * The server offers every panel it knows. On a site built without the hotel module
+ * (VITE_ENABLE_HOTEL off) the Hotels panel would lead nowhere, so it is not offered,
+ * and the hotel-only sections go with it.
+ */
+function forThisSite(meta) {
+  if (!meta || HOTEL_ENABLED) return meta
+  const services = (meta.services || []).filter((s) => s.key !== "hotel")
+  const catalog = (meta.catalog || [])
+    .map((g) => ({
+      ...g,
+      resources: (g.resources || [])
+        .map((r) => ({ ...r, services: (r.services || []).filter((x) => x !== "hotel") }))
+        .filter((r) => r.services.length),
+    }))
+    .filter((g) => g.resources.length)
+  return { ...meta, services, catalog }
 }
 
 const errorText = (err, fallback) => err?.response?.data?.message || err?.message || fallback
@@ -630,7 +651,7 @@ export default function AdminAccounts() {
   const load = useCallback(async () => {
     try {
       const [m, list] = await Promise.all([adminAccountsAPI.meta(), adminAccountsAPI.list()])
-      setMeta(m?.data?.data || null)
+      setMeta(forThisSite(m?.data?.data || null))
       setRows(list?.data?.data?.results || [])
       setSummary(list?.data?.data?.summary || null)
       setLoadError("")
@@ -825,7 +846,7 @@ export default function AdminAccounts() {
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-3"><PanelChips services={r.servicesAccess} labels={{ ...panelLabels, food: "Food", quickCommerce: "Quick Commerce", medical: "Medical", taxi: "Taxi" }} /></td>
+                        <td className="px-4 py-3"><PanelChips services={r.servicesAccess} labels={{ ...panelLabels, food: "Food", quickCommerce: "Quick Commerce", medical: "Medical", taxi: "Taxi", hotel: "Hotels" }} /></td>
                         <td className="px-4 py-3 text-xs text-neutral-500">
                           {when(r.createdAt)}
                           {r.createdBy && <span className="block">by {r.createdBy}</span>}

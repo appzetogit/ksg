@@ -4,6 +4,7 @@ import { Info, Plus, RotateCcw, Save, Trash2 } from "lucide-react";
 import { hotelAdmin } from "../api";
 import { useLoad } from "../useLoad";
 import { Button, Card, DetailSkeleton, ErrorState, PageHeader, cx } from "../components/ui";
+import { useHotelAccess } from "../hotelAccess";
 
 /** Defaults from the contract, used for any field the server leaves out. */
 const DEFAULTS = {
@@ -116,6 +117,8 @@ function Switch({ checked, onChange, label, hint }) {
 }
 
 export default function Settings() {
+  const { canWrite } = useHotelAccess();
+  const readOnly = !canWrite("hotel_settings");
   const { data, loading, error, reload, setData } = useLoad(() => hotelAdmin.settings().then((d) => d?.settings || d), []);
   const [form, setForm] = useState(null);
   const [touched, setTouched] = useState(false);
@@ -186,18 +189,27 @@ export default function Settings() {
     <form onSubmit={save} noValidate className="mx-auto max-w-4xl space-y-5">
       <PageHeader
         title="Hotel settings"
-        subtitle="Commission, payments, payouts and tax rules for the hotel module."
+        subtitle={
+          readOnly
+            ? "View only: your account can see these settings but not change them."
+            : "Commission, payments, payouts and tax rules for the hotel module."
+        }
         actions={
-          <>
-            <Button icon={RotateCcw} disabled={!dirty || saving} onClick={() => setForm(toForm(data))}>
-              Reset
-            </Button>
-            <Button type="submit" tone="primary" icon={Save} busy={saving} disabled={!dirty}>
-              Save changes
-            </Button>
-          </>
+          readOnly ? null : (
+            <>
+              <Button icon={RotateCcw} disabled={!dirty || saving} onClick={() => setForm(toForm(data))}>
+                Reset
+              </Button>
+              <Button type="submit" tone="primary" icon={Save} busy={saving} disabled={!dirty}>
+                Save changes
+              </Button>
+            </>
+          )
         }
       />
+
+      {/* View-only accounts see the values with every input switched off. */}
+      <fieldset disabled={readOnly} className="m-0 min-w-0 space-y-5 border-0 p-0">
 
       <div className="flex items-start gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
         <Info className="mt-0.5 h-4 w-4 shrink-0" />
@@ -261,9 +273,11 @@ export default function Settings() {
       <Card
         title="GST slabs"
         actions={
-          <Button icon={Plus} onClick={addSlab}>
-            Add slab
-          </Button>
+          readOnly ? null : (
+            <Button icon={Plus} onClick={addSlab}>
+              Add slab
+            </Button>
+          )
         }
       >
         <p className="mb-3 text-xs text-[var(--ha-ink-faint)]">By room tariff per room per night. Slabs must go up; the last one covers everything above.</p>
@@ -325,14 +339,17 @@ export default function Settings() {
         </div>
       </Card>
 
-      <div className="flex justify-end gap-2 pb-6">
-        <Button icon={RotateCcw} disabled={!dirty || saving} onClick={() => setForm(toForm(data))}>
-          Reset
-        </Button>
-        <Button type="submit" tone="primary" icon={Save} busy={saving} disabled={!dirty}>
-          Save changes
-        </Button>
-      </div>
+      {!readOnly && (
+        <div className="flex justify-end gap-2 pb-6">
+          <Button icon={RotateCcw} disabled={!dirty || saving} onClick={() => setForm(toForm(data))}>
+            Reset
+          </Button>
+          <Button type="submit" tone="primary" icon={Save} busy={saving} disabled={!dirty}>
+            Save changes
+          </Button>
+        </div>
+      )}
+      </fieldset>
     </form>
   );
 }

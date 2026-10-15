@@ -12,7 +12,8 @@
  *   - taxi's old 'x.view' permissions keep working;
  *   - nobody hands out a panel or a permission they do not hold themselves;
  *   - a deactivated or edited admin is re-checked on their very next request;
- *   - platform settings stay with superadmins.
+ *   - platform settings stay with superadmins;
+ *   - the Hotels panel follows the same rules (hotel_* sections).
  */
 import assert from 'node:assert/strict';
 import express from 'express';
@@ -69,7 +70,7 @@ const legacyOwner = await FoodAdmin.collection.insertOne({ email: 'first@x.in', 
   .then((r) => FoodAdmin.findById(r.insertedId));
 const owner = await FoodAdmin.create({
   email: 'owner@x.in', password: 'secret1', name: 'Owner', adminLevel: 'platform_superadmin',
-  admin_type: 'superadmin', permissions: ['*'], servicesAccess: ['food', 'quickCommerce', 'medical', 'taxi'],
+  admin_type: 'superadmin', permissions: ['*'], servicesAccess: ['food', 'quickCommerce', 'medical', 'taxi', 'hotel'],
 });
 const ordersReader = await FoodAdmin.create({
   email: 'orders@x.in', password: 'secret1', name: 'Orders reader', parentAdminId: owner._id,
@@ -182,6 +183,90 @@ await check('a taxi sub-admin keeps drivers and nothing else', async () => {
 await check('platform settings are not a sub-admin\'s to change', async () => {
   const r = await call(ordersReader, 'PUT', '/v1/platform/app-services/admin/food', { enabled: false });
   assert.ok(refused(r), `got ${r.status}`);
+});
+
+console.log('\nhotel panel');
+
+const hotelReader = await FoodAdmin.create({
+  email: 'hotelread@x.in', password: 'secret1', name: 'Hotel reader', parentAdminId: owner._id,
+  adminLevel: 'subadmin', admin_type: 'subadmin', permissions: ['hotel_partners.read', 'hotel_bookings.read'], servicesAccess: ['hotel'],
+});
+const hotelApprover = await FoodAdmin.create({
+  email: 'hotelapprove@x.in', password: 'secret1', name: 'Hotel approver', parentAdminId: owner._id,
+  adminLevel: 'subadmin', admin_type: 'subadmin', permissions: ['hotel_partners.write'], servicesAccess: ['hotel'],
+});
+const someId = () => String(new mongoose.Types.ObjectId());
+
+await check('hotel path table maps every admin route', () => {
+  const r = policy.resolveHotelAdminResource;
+  assert.equal(r('/overview', 'GET'), 'dashboard');
+  assert.equal(r('/partners', 'GET'), 'hotel_partners');
+  assert.equal(r('/partners/1/status', 'PUT'), 'hotel_partners');
+  assert.equal(r('/properties/1/documents/verify', 'PUT'), 'hotel_properties');
+  assert.equal(r('/properties/1/live', 'PUT'), 'hotel_properties');
+  assert.equal(r('/bookings/1/refund', 'POST'), 'hotel_bookings');
+  assert.equal(r('/reviews/1/status', 'PUT'), 'hotel_reviews');
+  assert.equal(r('/withdrawals/1/status', 'PUT'), 'hotel_withdrawals');
+  assert.equal(r('/settings', 'PUT'), 'hotel_settings');
+  assert.ok(policy.ADMIN_SERVICE_KEYS.includes('hotel'));
+  assert.ok(!policy.ADMIN_SERVICE_KEYS.includes('serviceProvider'));
+});
+
+await check('superadmins reach the hotel panel', async () => {
+  assert.equal((await call(owner, 'GET', '/v1/hotel/admin/partners')).status, 200);
+  assert.equal((await call(legacyOwner, 'GET', '/v1/hotel/admin/settings')).status, 200);
+  assert.ok(through(await call(owner, 'PUT', `/v1/hotel/admin/partners/${someId()}/status`, { status: 'approved' })));
+});
+
+await check('a hotel read-only sub-admin lists partners but cannot approve one', async () => {
+  const list = await call(hotelReader, 'GET', '/v1/hotel/admin/partners');
+  assert.equal(list.status, 200, list.json?.message);
+  assert.ok(through(await call(hotelReader, 'GET', '/v1/hotel/admin/bookings')));
+  const approve = await call(hotelReader, 'PUT', `/v1/hotel/admin/partners/${someId()}/status`, { status: 'approved' });
+  assert.ok(refused(approve), `got ${approve.status}`);
+  assert.match(approve.json?.message || '', /view Hotel partners but not change/);
+  assert.ok(refused(await call(hotelReader, 'PUT', `/v1/hotel/admin/bookings/${someId()}/status`, { status: 'cancelled' })));
+});
+
+await check('hotel sections not given are refused', async () => {
+  assert.ok(refused(await call(hotelReader, 'GET', '/v1/hotel/admin/withdrawals')));
+  assert.ok(refused(await call(hotelReader, 'GET', '/v1/hotel/admin/settings')));
+  assert.ok(refused(await call(hotelReader, 'PUT', '/v1/hotel/admin/settings', { minWithdrawal: 1 })));
+  assert.ok(refused(await call(hotelApprover, 'GET', '/v1/hotel/admin/properties')));
+});
+
+await check('hotel write permission allows the approval', async () => {
+  const r = await call(hotelApprover, 'PUT', `/v1/hotel/admin/partners/${someId()}/status`, { status: 'approved' });
+  assert.ok(through(r), `got ${r.status} ${r.json?.message}`);
+});
+
+await check('a sub-admin without hotel gets 403 from every hotel route', async () => {
+  assert.ok(refused(await call(ordersReader, 'GET', '/v1/hotel/admin/partners')));
+  assert.ok(refused(await call(medicalOnly, 'GET', '/v1/hotel/admin/overview')));
+  // and a hotel-only admin stays out of the other panels
+  assert.ok(refused(await call(hotelReader, 'GET', '/v1/food/admin/orders')));
+});
+
+await check('the admin form offers Hotels and its sections, and saves them', async () => {
+  const meta = await call(owner, 'GET', '/v1/platform/admins/meta');
+  assert.equal(meta.status, 200, meta.json?.message);
+  assert.ok(meta.json.data.services.some((s) => s.key === 'hotel' && s.label === 'Hotels'));
+  const group = meta.json.data.catalog.find((g) => g.group === 'Hotels');
+  assert.ok(group, 'Hotels permission group');
+  assert.deepEqual(group.resources.map((r) => r.key).sort(),
+    ['hotel_bookings', 'hotel_partners', 'hotel_properties', 'hotel_reviews', 'hotel_settings', 'hotel_withdrawals']);
+  const made = await call(owner, 'POST', '/v1/platform/admins', {
+    name: 'Stays desk', email: 'stays@x.in', password: 'secret1', password_confirmation: 'secret1',
+    role: 'custom', servicesAccess: ['hotel'], permissions: ['hotel_bookings.read', 'hotel_reviews.write', 'dashboard.read'],
+  });
+  assert.equal(made.status, 200, made.json?.message);
+  const saved = await FoodAdmin.findOne({ email: 'stays@x.in' });
+  assert.deepEqual([...saved.servicesAccess], ['hotel']);
+  assert.ok(saved.permissions.includes('hotel_reviews.write'));
+  assert.ok(through(await call(saved, 'GET', '/v1/hotel/admin/overview')));
+  assert.ok(refused(await call(saved, 'GET', '/v1/hotel/admin/partners')));
+  const me = await call(hotelReader, 'GET', '/v1/platform/admins/me');
+  assert.deepEqual(me.json.data.servicesAccess, ['hotel']);
 });
 
 console.log('\nadmin accounts');

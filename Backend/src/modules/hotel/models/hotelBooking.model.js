@@ -130,6 +130,8 @@ const hotelBookingSchema = new mongoose.Schema(
             checkInReminder: { type: Boolean, default: false },
             reviewRequest: { type: Boolean, default: false },
             paymentExpiryWarning: { type: Boolean, default: false },
+            // Partner asked to mark arrival or no-show once the check-in day has passed (services/jobs.service.js).
+            noShowPrompt: { type: Boolean, default: false },
         },
         source: { type: String, enum: ['app', 'web', 'admin'], default: 'app' },
     },
