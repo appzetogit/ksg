@@ -192,7 +192,7 @@ async function seedPartner() {
   return upsert(HotelPartner, {
     label: `${PARTNER.name} (${PARTNER.phone})`,
     filter: { phone: PARTNER.phone },
-    insert: { kyc: PARTNER.kyc, bank: PARTNER.bank, address: PARTNER.address, email: PARTNER.email },
+    insert: { phone: PARTNER.phone, kyc: PARTNER.kyc, bank: PARTNER.bank, address: PARTNER.address, email: PARTNER.email },
     enforce: { status: 'approved', rejectionReason: '' },
     guard: partnerGuard,
     fixup: (doc) => {
