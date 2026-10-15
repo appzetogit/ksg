@@ -32,9 +32,11 @@
 // A refund on a settled booking that stays settled (admin goodwill refund) reverses
 // the same pro-rata share.
 //
-// Prepaid money is learnt from 'payment' / 'refund' events, recorded as zero-amount
-// NON_WALLET marker rows on the platform owner (no balance moves; the figure is in
-// metadata). Without markers the payment mode decides (see prepaidFromBooking).
+// Prepaid money = the larger of the booking's own record (payment.walletAmount +
+// payment.onlinePaid, refunds in payment.refundedAmount, written by booking.service) and
+// the 'payment' / 'refund' events, kept as zero-amount NON_WALLET marker rows on the
+// platform owner (no balance moves; the figure is in metadata). With neither, the
+// payment mode decides (see prepaidFromBooking).
 
 import mongoose from 'mongoose';
 import { logger } from '../../../utils/logger.js';
@@ -69,6 +71,8 @@ const entriesOf = (bookingId) => LedgerEntry.find({ jobType: JOB_TYPE, jobId: St
 export const prepaidFromBooking = (booking) => {
     const pay = booking?.payment || {};
     const { total } = splitOf(booking);
+    const recorded = r2((pay.walletAmount || 0) + (pay.onlinePaid || 0));
+    if (recorded > 0) return Math.min(total, recorded);
     if (pay.mode === 'pay_at_hotel') return 0;
     if (pay.mode === 'online' || pay.mode === 'wallet') {
         if (['paid', 'partially_refunded', 'refunded'].includes(pay.status)) return total;
@@ -84,8 +88,15 @@ export const moneyIn = async (booking, entries = null) => {
     const markers = rows.filter((e) => e.type === 'NON_WALLET');
     const payments = markers.filter((e) => e.metadata?.marker === 'payment' && ['online', 'wallet'].includes(e.metadata?.kind));
     const refunds = markers.filter((e) => e.metadata?.marker === 'refund');
-    const paid = payments.length ? r2(payments.reduce((s, e) => s + (e.metadata.amount || 0), 0)) : prepaidFromBooking(booking);
-    const refunded = r2(refunds.reduce((s, e) => s + (e.metadata.amount || 0), 0));
+    // The booking service records what moved (payment.walletAmount + onlinePaid,
+    // refundedAmount); markers cover an event the booking doc does not show yet.
+    const pay = booking?.payment || {};
+    const fromDoc = r2((pay.walletAmount || 0) + (pay.onlinePaid || 0));
+    const fromMarkers = r2(payments.reduce((s, e) => s + (e.metadata.amount || 0), 0));
+    let paid;
+    if (payments.length || fromDoc > 0) paid = Math.max(fromMarkers, fromDoc);
+    else paid = prepaidFromBooking(booking);
+    const refunded = Math.max(r2(refunds.reduce((s, e) => s + (e.metadata.amount || 0), 0)), r2(pay.refundedAmount || 0));
     return { paid, refunded };
 };
 

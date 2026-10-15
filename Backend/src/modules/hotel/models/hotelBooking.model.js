@@ -75,6 +75,16 @@ const hotelBookingSchema = new mongoose.Schema(
             amountPaid: { type: Number, min: 0, default: 0 },
             amountDue: { type: Number, min: 0, default: 0 },
             walletAmount: { type: Number, min: 0, default: 0 },
+            // Booking phase (services/booking.service.js): how payNow splits and what
+            // has moved. amountPaid = walletAmount (debited at create) + onlinePaid +
+            // collectedAtHotel; refunds never reduce it (see refundedAmount).
+            payNow: { type: Number, min: 0, default: 0 },
+            onlineAmount: { type: Number, min: 0, default: 0 }, // gateway part of payNow
+            onlinePaid: { type: Number, min: 0, default: 0 },
+            collectedAtHotel: { type: Number, min: 0, default: 0 },
+            refundedAmount: { type: Number, min: 0, default: 0 },
+            walletRefunded: { type: Number, min: 0, default: 0 },
+            gatewayRefunded: { type: Number, min: 0, default: 0 },
             razorpayOrderId: String,
             razorpayPaymentId: String,
             paymentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Payment' },
@@ -98,6 +108,23 @@ const hotelBookingSchema = new mongoose.Schema(
             refundAmount: { type: Number, min: 0 },
             refundId: { type: mongoose.Schema.Types.ObjectId, ref: 'Refund' },
         },
+        // Every refund on this booking (policy cancel, partner/admin cancel, expiry,
+        // admin manual refund, late capture). `key` makes each one idempotent.
+        refunds: [
+            {
+                _id: false,
+                key: { type: String, required: true },
+                amount: { type: Number, min: 0, required: true },
+                walletAmount: { type: Number, min: 0, default: 0 },
+                gatewayAmount: { type: Number, min: 0, default: 0 },
+                refundId: { type: mongoose.Schema.Types.ObjectId, ref: 'Refund' },
+                gatewayRefundId: String,
+                status: { type: String, enum: ['processed', 'pending', 'failed'], default: 'processed' },
+                reason: String,
+                by: { type: String, enum: ['user', 'partner', 'admin', 'system'] },
+                at: { type: Date, default: Date.now },
+            },
+        ],
         review: { type: mongoose.Schema.Types.ObjectId, ref: 'HotelReview' },
         notificationsSent: {
             checkInReminder: { type: Boolean, default: false },

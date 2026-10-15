@@ -21,6 +21,10 @@ const STATUS_TONE = {
   no_show: "bg-orange-50 text-orange-800 ring-orange-200",
   expired: "bg-slate-100 text-slate-600 ring-slate-200",
   awaiting_payment: "bg-amber-50 text-amber-800 ring-amber-200",
+  paid: "bg-emerald-50 text-emerald-800 ring-emerald-200",
+  captured: "bg-emerald-50 text-emerald-800 ring-emerald-200",
+  processed: "bg-emerald-50 text-emerald-800 ring-emerald-200",
+  failed: "bg-red-50 text-red-700 ring-red-200",
 };
 
 export function StatusBadge({ status, className }) {
@@ -212,6 +216,23 @@ export function Select({ value, onChange, options, className, ariaLabel }) {
         </option>
       ))}
     </select>
+  );
+}
+
+export function DateInput({ value, onChange, ariaLabel, min, max, className }) {
+  return (
+    <input
+      type="date"
+      aria-label={ariaLabel}
+      value={value || ""}
+      min={min || undefined}
+      max={max || undefined}
+      onChange={(e) => onChange(e.target.value)}
+      className={cx(
+        "rounded-lg border border-[var(--ha-border)] bg-white px-3 py-2 text-sm text-[var(--ha-ink)] focus:border-[var(--ha-navy)] focus:outline-none focus:ring-2 focus:ring-[var(--ha-navy)]/20",
+        className,
+      )}
+    />
   );
 }
 

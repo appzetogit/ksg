@@ -10,14 +10,18 @@ import { BTN, StateMessage } from "./components/ui";
 //   /hotel                  home + search
 //   /hotel/search?...       listing (all search state in the query string)
 //   /hotel/p/:slugOrId      property detail, rooms and live availability
-//   /hotel/checkout?...     reserve (guest details, price, payment mode)
-//   /hotel/stays            my stays (booking phase)
-//   /hotel/saved            saved properties (booking phase)
+//   /hotel/checkout?...     reserve: server quote, coupon, wallet, payment mode, Razorpay
+//   /hotel/booking/:id/confirmed  success screen after booking / payment
+//   /hotel/stays            my stays (tabs: upcoming / ongoing / past / cancelled)
+//   /hotel/stays/:id        booking detail: voucher, pay, cancel, review
+//   /hotel/saved            saved properties
 const HomePage = lazy(() => import("./pages/HomePage"));
 const SearchPage = lazy(() => import("./pages/SearchPage"));
 const PropertyPage = lazy(() => import("./pages/PropertyPage"));
 const CheckoutPage = lazy(() => import("./pages/CheckoutPage"));
+const ConfirmationPage = lazy(() => import("./pages/ConfirmationPage"));
 const StaysPage = lazy(() => import("./pages/StaysPage"));
+const BookingDetailPage = lazy(() => import("./pages/BookingDetailPage"));
 const SavedPage = lazy(() => import("./pages/SavedPage"));
 
 function ScrollToTop() {
@@ -57,7 +61,9 @@ export default function UserApp() {
               <Route path="search" element={<SearchPage />} />
               <Route path="p/:slugOrId" element={<PropertyPage />} />
               <Route path="checkout" element={<CheckoutPage />} />
+              <Route path="booking/:id/confirmed" element={<ConfirmationPage />} />
               <Route path="stays" element={<StaysPage />} />
+              <Route path="stays/:id" element={<BookingDetailPage />} />
               <Route path="saved" element={<SavedPage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>

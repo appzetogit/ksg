@@ -338,6 +338,93 @@ HotelSettings = {
 Listeners must be idempotent (key on booking id + status / payment id) and must never throw
 into the emitter (wrap in try/catch and log).
 
+## Deviations (backend, phase 4: bookings + payments)
+
+Where the booking backend had to pick an interpretation. Frontends follow this section
+over the tables above if they disagree.
+
+1. **Coupons are not available for hotels yet.** Core coupons are per-vertical offer
+   collections (food_offers, qc_offers, taxi promo codes) with no shared redeem engine,
+   so any `couponCode` on quote/create returns **400** "Coupons are not available for
+   hotels yet". `pricing.couponDiscount` is always 0 for now; `priceStay()` already
+   accepts a validated `{ code, discount }` for when hotel coupons land.
+2. **Settings** live in one `hotel_settings` document (model `HotelSettings`), not the
+   core settings registry (the slab table and the hotel admin form do not fit its scalar
+   keys). `GET/PUT /admin/settings` return the settings object as `data` (bare). PUT
+   takes a partial or full object (unknown keys ignored); `gstSlabs` must ascend and end
+   with exactly one `{ upTo: null }` slab. Cached 30 s per process.
+3. **Pricing details.** Extra guests = beyond `rooms × baseAdults` / `rooms × baseChildren`,
+   charged per night. GST slab = per-room-per-night tariff of the taxable amount (after
+   prepaid/coupon discounts). Commission = `max(taxable × %, minCommission)` but never
+   more than the taxable amount. Platform fee = Master `fees.platformFee` resolved for
+   vertical `hotel` + the zone (0 when unset); its GST uses `fees.platformFeeGstRate`
+   (18% when the fee is set but the rate is not). The quote also returns
+   `nightlyPrices: [{date, price}]`.
+4. **Party fit.** Quote returns `available: false` when the party does not fit or rooms
+   are short; create returns **400** for a party that does not fit and **409** when sold out.
+5. **Wallet.** `walletApplicable` = `min(wallet balance, payNow)`. With `useWallet`, the
+   wallet part is debited at create (in the same transaction as the room hold). The
+   gateway part is never between 0 and Rs 1 (Razorpay minimum): the wallet part is
+   reduced to leave Rs 1 for the gateway in that edge case.
+6. **Payment object** on create / `retry-payment` (`data` is the object itself for
+   retry-payment): `{ razorpayOrderId, amount (paise), currency, keyId, name: 'KSG',
+   description, prefill }`. `retry-payment` returns the SAME order while the hold lasts;
+   409 after expiry. If the gateway order cannot be created, the booking is expired at
+   once (rooms + wallet part returned) and create answers 502/503.
+   Dev only: with no Razorpay keys and `NODE_ENV !== 'production'`, orders are
+   `mock_order_*` and verify accepts `razorpaySignature: 'mock_signature_bypass'`.
+7. **Verify / webhook.** Verify checks the HMAC, then fetches the payment from Razorpay
+   (order id must match, status `captured`, amount == the gateway part in paise). The
+   core Razorpay webhook (`payment.captured`) confirms hotel bookings through the same
+   path, idempotently. A payment arriving after the booking expired/was cancelled is
+   refunded in full automatically (verify answers 409).
+8. **Booking.payment** carries extra fields: `payNow, onlineAmount` (gateway part),
+   `onlinePaid, collectedAtHotel, refundedAmount`; `amountPaid` = wallet + online +
+   collected at hotel (refunds do not reduce it; see `refundedAmount`). `amountDue` is 0
+   once cancelled/expired. `Booking.refunds: [{ amount, walletAmount, gatewayAmount,
+   status, reason, by, at }]` lists every refund.
+9. **Cancellation.** Check-in moment = check-in date at the property's `checkInTime`
+   (IST). `freeCancellationUntil` = that − `freeCancelHours`; before it 100%, after it
+   `refundPercentAfter` % of what was paid online + wallet (cash collected at the hotel is
+   the property's to return). `non_refundable` = 0%. An unpaid/awaiting booking refunds
+   any wallet part in full. Customers can cancel `awaiting_payment`/`confirmed` bookings
+   until the check-in moment (`canCancel`); partner/admin cancels refund 100%. Refunds go
+   back to the card/UPI first, then the wallet. Gateway refunds create a core `Refund`
+   row (refund.service `initiateRefund`, `refundTo: 'gateway'`) and call Razorpay through
+   the hotel gateway adapter; wallet refunds credit the customer wallet with an
+   idempotent `referenceKey`. `cancel-preview` adds `canCancel` (0 refund when false).
+10. **Status rules.** Transitions: `awaiting_payment → confirmed|cancelled|expired`,
+    `confirmed → checked_in|cancelled|no_show`, `checked_in → checked_out`, and
+    `checked_in → cancelled` for admins only. Check-in: from the check-in date until
+    before the check-out date. No-show: only after the check-in day. Check-out with an
+    unpaid balance → 409 unless `force: true` (partner or admin). Admin `force` skips the
+    date rules. Inventory is released from `max(today, checkIn)` to `checkOut` on
+    cancelled / expired / no_show / checked_out (so an early check-out frees the unused
+    nights); the availability ledger row is deleted or trimmed to match.
+11. **mark-paid** works on confirmed / checked_in / checked_out bookings, `amount` must be
+    > 0 and ≤ `amountDue`; emits `payment` with `kind: 'at_hotel'`.
+12. **Lists.** Customer tabs: `upcoming` = awaiting_payment/confirmed with check-in today
+    or later; `ongoing` = checked_in, or confirmed with check-in before today and
+    check-out after today; `past` = checked_out, no_show, or confirmed whose check-out
+    has passed; `cancelled` = cancelled + expired. Partner/admin `from`/`to` filter the
+    **check-in date** (inclusive); `status` is a single value; `q` = booking ref or guest
+    name/phone.
+13. **Admin booking detail** `data: { booking, partner, user, property, payments,
+    refunds, refundable }`. `payments` rows: `{ kind: 'online'|'wallet'|'at_hotel',
+    method, amount, status, razorpayPaymentId?, paymentId?, createdAt }`. `refunds` = the
+    booking's refund log rows `{ amount, walletAmount, gatewayAmount, reason, status, by,
+    createdAt, gatewayRefund? }` (a failed row's wallet/gateway amounts show what actually
+    moved). `refundable` = wallet + online paid − refunded: the cap for
+    `POST /admin/bookings/:id/refund` (cash collected at the hotel is not refundable by the
+    platform, so this can be less than `amountPaid − refunds`).
+14. **Events** (`bookingEvents`): creation emits `transition` with `from: null`; a wallet
+    part emits `payment` `kind: 'wallet'` at create; a gateway payment emits `payment`
+    (`kind: 'online'`) just before its `confirmed` transition. A payment event's
+    `booking` is the post-commit document. Wallet payments are not written to the core
+    `payments` collection (it is the gateway-payment aggregate).
+15. **Expiry job** `expireStaleBookings()` runs every 60 s from `server.js`
+    `startIntervals()` when `BACKGROUND_JOBS_ENABLED` and the hotel module are on.
+
 ## Deviations (backend, phase 5: money, reviews, notifications)
 
 1. **Settlement** (`services/settlement.listener.js`, a listener on `bookingEvents`) writes
@@ -395,7 +482,10 @@ into the emitter (wrap in try/catch and log).
 12. **My orders / Master orders**: hotel rows use service/tab `hotel` (label "Stays"),
     route `/hotel/bookings/:id`; unpaid holds (`awaiting_payment` in My orders, `expired` in
     both) are hidden. Master > Orders refuses to delete a hotel booking.
-13. **Settings**: `services/moneySettings.js` reads `settings.service.js`
-    (`getHotelSettings`/`getSettings`) when present, else the contract defaults
-    (`minWithdrawal 500`, `settleOn checked_out`, `reviewAutoApprove true`, commission 10% /
-    min 50 / GST 18%).
+13. **Settings**: `minWithdrawal`, `settleOn` and `reviewAutoApprove` are read through
+    `services/moneySettings.js` from `settings.service.js` `getHotelSettings()` (contract
+    defaults only if that read fails).
+14. **With the phase-4 booking service**: the reminder job and the settlement read the
+    same `hotel_bookings` fields the booking service writes; the `payment` event with
+    `kind: 'at_hotel'` (mark-paid) is recorded but never counts as prepaid, and each `refund`
+    event (one per actual refund) is keyed by its `refundId`.

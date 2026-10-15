@@ -4,6 +4,7 @@ import {
   BedDouble,
   Building2,
   CalendarCheck,
+  Landmark,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -53,12 +54,17 @@ const NAV = [
   { to: "/admin/hotel/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/admin/hotel/partners", label: "Partners", icon: Users },
   { to: "/admin/hotel/properties", label: "Properties", icon: Building2 },
-  { label: "Bookings", icon: CalendarCheck, soon: true },
-  { label: "Reviews", icon: Star, soon: true },
-  { label: "Settings", icon: Settings, soon: true },
+  { to: "/admin/hotel/bookings", label: "Bookings", icon: CalendarCheck },
+  { to: "/admin/hotel/reviews", label: "Reviews", icon: Star },
+  { to: "/admin/hotel/withdrawals", label: "Withdrawals", icon: Landmark },
+  { to: "/admin/hotel/settings", label: "Settings", icon: Settings },
 ];
 
 const TITLES = [
+  ["/admin/hotel/bookings", "Bookings"],
+  ["/admin/hotel/reviews", "Reviews"],
+  ["/admin/hotel/withdrawals", "Withdrawals"],
+  ["/admin/hotel/settings", "Settings"],
   ["/admin/hotel/partners", "Partners"],
   ["/admin/hotel/properties", "Properties"],
   ["/admin/hotel/dashboard", "Dashboard"],
@@ -177,7 +183,7 @@ function Sidebar({ open, onClose }) {
           )}
         </nav>
         <div className="shrink-0 border-t border-[var(--ha-border)] px-4 py-3 text-[11px] text-[var(--ha-ink-faint)]">
-          Coupons, payouts and users are managed in Master.
+          Coupons and users are managed in Master.
         </div>
       </aside>
     </>

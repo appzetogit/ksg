@@ -11,6 +11,7 @@ export { HotelBooking } from './hotelBooking.model.js';
 export { HotelReview } from './hotelReview.model.js';
 export { HotelPropertyDocument } from './hotelPropertyDocument.model.js';
 export { HotelSavedProperty } from './hotelSavedProperty.model.js';
+export { HotelSettings } from './hotelSettings.model.js';
 export { HotelWithdrawal } from './hotelWithdrawal.model.js';
 
 export const HOTEL_MODEL_NAMES = Object.freeze([
@@ -23,5 +24,6 @@ export const HOTEL_MODEL_NAMES = Object.freeze([
     'HotelReview',
     'HotelPropertyDocument',
     'HotelSavedProperty',
+    'HotelSettings',
     'HotelWithdrawal',
 ]);

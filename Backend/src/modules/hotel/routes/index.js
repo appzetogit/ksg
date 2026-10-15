@@ -34,6 +34,9 @@ import {
 import * as partnerProps from '../controllers/partnerProperty.controller.js';
 import * as partnerInv from '../controllers/partnerInventory.controller.js';
 import * as admin from '../controllers/admin.controller.js';
+// Phase 4 (bookings + payments)
+import { userBookingRouter, partnerBookingRouter, adminBookingRouter } from './booking.routes.js';
+// Phase 5 (money, reviews, saved, voucher)
 import { moneyRouter, moneyAdminRouter } from './money.routes.js';
 
 const router = express.Router();
@@ -79,6 +82,7 @@ partner.get('/inventory/blocks', requireApprovedHotelPartner, partnerInv.listBlo
 partner.post('/inventory/blocks', requireApprovedHotelPartner, partnerInv.createBlock);
 partner.delete('/inventory/blocks/:id', requireApprovedHotelPartner, partnerInv.deleteBlock);
 partner.get('/dashboard', requireApprovedHotelPartner, partnerInv.dashboard);
+partner.use(partnerBookingRouter); // phase 4: /partner/bookings/*
 router.use('/partner', partner);
 
 // ─── Admin ─────────────────────────────────────────────────────────────────
@@ -93,7 +97,11 @@ adminRouter.get('/properties/:id', admin.getProperty);
 adminRouter.put('/properties/:id/status', admin.setPropertyStatus);
 adminRouter.put('/properties/:id/documents/verify', admin.verifyDocuments);
 adminRouter.put('/properties/:id/live', admin.setPropertyLive);
+adminRouter.use(adminBookingRouter); // phase 4: /admin/bookings/*, /admin/settings
 adminRouter.use(moneyAdminRouter); // phase 5: reviews + withdrawals (routes/money.routes.js)
 router.use('/admin', adminRouter);
+
+// ─── Customer (phase 4 bookings) ───────────────────────────────────────────
+router.use('/user', userBookingRouter);
 
 export default router;

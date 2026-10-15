@@ -37,6 +37,7 @@ let manualAssignExpiryInterval = null;
 let fssaiExpiryInterval = null;
 let spScheduler = null;
 let ledgerNightlyInterval = null;
+let hotelExpiryInterval = null;
 let hotelRemindersInterval = null;
 
 const gracefulShutdown = async (signal) => {
@@ -55,6 +56,7 @@ const gracefulShutdown = async (signal) => {
             if (fssaiExpiryInterval) clearInterval(fssaiExpiryInterval);
             if (spScheduler) spScheduler.stop();
             if (ledgerNightlyInterval) clearInterval(ledgerNightlyInterval);
+            if (hotelExpiryInterval) clearInterval(hotelExpiryInterval);
             if (hotelRemindersInterval) clearInterval(hotelRemindersInterval);
             logger.info('Graceful shutdown complete');
             process.exit(0);
@@ -373,12 +375,45 @@ const startServer = async () => {
             runFssaiExpirySync();
             fssaiExpiryInterval = setInterval(runFssaiExpirySync, 60 * 60 * 1000);
 
-            // Hotel check-in reminders and review requests (each booking is claimed by a
-            // conditional flag write, so a second instance cannot send twice).
-            import('./src/modules/hotel/services/notifications.listener.js')
-                .then(({ runHotelReminders }) => {
-                    const tick = () => runHotelReminders()
-                        .catch((err) => logger.error(`Hotel reminders failed: ${err.message}`));
+            // Hotel: unpaid booking holds past payment.expiresAt -> expired (rooms and any
+            // wallet part given back). Each expiry is a conditional transition, so an
+            // overlapping run elsewhere is harmless. Skipped while the hotel module is off.
+            Promise.all([
+                import('./src/modules/hotel/services/booking.service.js'),
+                import('./src/core/modules/moduleState.service.js'),
+                import('./src/core/modules/moduleRegistry.js'),
+            ])
+                .then(([{ expireStaleBookings }, { isModuleEnabled }, { MODULES }]) => {
+                    const tick = async () => {
+                        try {
+                            if (!(await isModuleEnabled(MODULES.HOTEL))) return;
+                            const { expired } = await expireStaleBookings();
+                            if (expired) logger.info(`Hotel: expired ${expired} unpaid booking(s)`);
+                        } catch (err) {
+                            logger.error(`Hotel booking expiry failed: ${err.message}`);
+                        }
+                    };
+                    hotelExpiryInterval = setInterval(tick, 60 * 1000);
+                    hotelExpiryInterval.unref?.();
+                })
+                .catch((err) => logger.error(`Hotel booking expiry failed to start: ${err.message}`));
+
+            // Hotel check-in reminders and review requests, every 30 min (each booking is
+            // claimed by a conditional flag write, so a second instance cannot send twice).
+            Promise.all([
+                import('./src/modules/hotel/services/notifications.listener.js'),
+                import('./src/core/modules/moduleState.service.js'),
+                import('./src/core/modules/moduleRegistry.js'),
+            ])
+                .then(([{ runHotelReminders }, { isModuleEnabled }, { MODULES }]) => {
+                    const tick = async () => {
+                        try {
+                            if (!(await isModuleEnabled(MODULES.HOTEL))) return;
+                            await runHotelReminders();
+                        } catch (err) {
+                            logger.error(`Hotel reminders failed: ${err.message}`);
+                        }
+                    };
                     hotelRemindersInterval = setInterval(tick, 30 * 60 * 1000);
                     hotelRemindersInterval.unref?.();
                 })
