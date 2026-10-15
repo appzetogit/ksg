@@ -56,6 +56,10 @@ const hotelBookingSchema = new mongoose.Schema(
             subtotal: { type: Number, min: 0, required: true },
             couponCode: String,
             couponDiscount: { type: Number, min: 0, default: 0 },
+            // Who bears the coupon (hotel_offers.funding); platform-funded discounts are
+            // paid to the hotel as platformSubsidy at settlement (pricing.service.js).
+            couponFunding: { type: String, enum: ['platform', 'partner'] },
+            platformSubsidy: { type: Number, min: 0, default: 0 },
             prepaidDiscount: { type: Number, min: 0, default: 0 },
             taxableAmount: { type: Number, min: 0, required: true },
             gstRate: { type: Number, min: 0, default: 0 },

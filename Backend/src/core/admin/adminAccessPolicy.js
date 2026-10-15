@@ -391,8 +391,9 @@ const HOTEL_ADMIN_RULES = [
   rule(/^\/reviews(\/|$)/, 'hotel_reviews'),
   rule(/^\/withdrawals(\/|$)/, 'hotel_withdrawals'),
   rule(/^\/settings(\/|$)/, 'hotel_settings'),
-  // Hotel coupons (admin CRUD), under the shared Offers & coupons permission.
-  rule(/^\/coupons(\/|$)/, 'promotions'),
+  // Hotel coupons (admin CRUD at /admin/offers), under the shared Offers & coupons
+  // permission. /coupons kept as an alias.
+  rule(/^\/(offers|coupons)(\/|$)/, 'promotions'),
 ];
 
 function resolveFrom(rules, path, method) {

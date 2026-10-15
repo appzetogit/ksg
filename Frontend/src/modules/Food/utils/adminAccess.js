@@ -275,6 +275,7 @@ export const HOTEL_PAGE_RULES = [
   ["/admin/hotel/properties", "hotel_properties"],
   ["/admin/hotel/bookings", "hotel_bookings"],
   ["/admin/hotel/reviews", "hotel_reviews"],
+  ["/admin/hotel/offers", "promotions"],
   ["/admin/hotel/withdrawals", "hotel_withdrawals"],
   ["/admin/hotel/settings", "hotel_settings"],
 ]

@@ -161,6 +161,13 @@ export const bookingBody = ({ propertyId, roomTypeId, checkIn, checkOut, rooms, 
   return body;
 };
 
+/**
+ * Coupons this customer can use on a property now →
+ * [{ code, title, description, discountType, discountValue, maxDiscount, minBookingAmount, validTo, firstBookingOnly, summary }].
+ */
+export const getOffers = (propertyId) =>
+  userApi.get("/user/offers", propertyId ? { propertyId } : undefined).then((list) => (Array.isArray(list) ? list : []));
+
 /** Server price for a stay (no hold) → Quote. */
 export const getQuote = (input) => userApi.post("/user/bookings/quote", bookingBody(input));
 

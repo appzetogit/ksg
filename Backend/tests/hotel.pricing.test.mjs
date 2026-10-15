@@ -30,7 +30,8 @@ const assertAddsUp = (r) => {
     assert.equal(paise(p.taxableAmount), paise(p.subtotal) - paise(p.couponDiscount) - paise(p.prepaidDiscount), 'taxable');
     assert.equal(paise(p.total), paise(p.taxableAmount) + paise(p.gstAmount) + paise(p.platformFee) + paise(p.platformFeeGst), 'total');
     assert.equal(paise(r.payNow) + paise(r.payAtHotel), paise(p.total), 'payNow + payAtHotel');
-    assert.equal(paise(p.partnerPayout), paise(p.taxableAmount) + paise(p.gstAmount) - paise(p.commissionAmount) - paise(p.commissionGst), 'payout');
+    assert.equal(paise(p.partnerPayout), paise(p.taxableAmount) + paise(p.gstAmount) + paise(p.platformSubsidy || 0) - paise(p.commissionAmount) - paise(p.commissionGst), 'payout');
+    assert.equal(paise(p.platformSubsidy || 0), p.couponFunding === 'platform' ? paise(p.couponDiscount) : 0, 'subsidy');
     for (const [k, v] of Object.entries(p)) {
         if (typeof v === 'number') assert.equal(round2(v), v, `${k} has more than 2 decimals: ${v}`);
     }
@@ -185,6 +186,37 @@ check('coupon never exceeds the subtotal', () => {
     assert.equal(r.pricing.commissionAmount, 0, 'commission capped at taxable');
     assert.equal(r.pricing.partnerPayout, 0);
     assertAddsUp(r);
+});
+check('partner-funded coupon (and the default): no subsidy, the discount comes off the payout', () => {
+    for (const funding of ['partner', undefined]) {
+        const r = base({ coupon: { code: 'P200', discount: 200, funding } });
+        const p = r.pricing;
+        assert.equal(p.couponFunding, 'partner');
+        assert.equal(p.platformSubsidy, 0);
+        assert.equal(p.taxableAmount, 1800);
+        assert.equal(p.commissionAmount, 180, 'commission on the post-discount taxable amount');
+        assert.equal(p.partnerPayout, 1677.6); // 1800 + 90 - 180 - 32.4
+        assertAddsUp(r);
+    }
+});
+check('platform-funded coupon: guest pays less, hotel payout as if no discount (commission on post-discount)', () => {
+    const r = base({ coupon: { code: 'K200', discount: 200, funding: 'platform' } });
+    const p = r.pricing;
+    assert.equal(p.couponFunding, 'platform');
+    assert.equal(p.platformSubsidy, 200);
+    assert.equal(p.total, 1890, 'guest pays 1800 + 5% GST');
+    assert.equal(p.commissionAmount, 180);
+    assert.equal(p.partnerPayout, 1877.6); // 1800 + 90 + 200 - 180 - 32.4
+    assertAddsUp(r);
+    const c = customerPricing(p);
+    assert.equal(c.couponFunding, undefined);
+    assert.equal(c.platformSubsidy, undefined);
+    assert.equal(c.couponDiscount, 200);
+});
+check('no coupon: no funding field, subsidy 0', () => {
+    const p = base().pricing;
+    assert.equal(p.couponFunding, undefined);
+    assert.equal(p.platformSubsidy, 0);
 });
 
 console.log('\n[platform fee]');

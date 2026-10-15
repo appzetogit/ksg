@@ -241,21 +241,23 @@ async function hotelStays({ start, end }) {
           gst: { $add: [num('$pricing.gstAmount'), num('$pricing.platformFeeGst'), num('$pricing.commissionGst')] },
           commission: num('$pricing.commissionAmount'),
           platformFee: num('$pricing.platformFee'),
+          // Platform-funded hotel coupons: the platform pays the hotel the discount.
+          subsidy: num('$pricing.platformSubsidy'),
           partners: {
             $subtract: [
-              { $add: [num('$pricing.taxableAmount'), num('$pricing.gstAmount')] },
+              { $add: [num('$pricing.taxableAmount'), num('$pricing.gstAmount'), num('$pricing.platformSubsidy')] },
               { $add: [num('$pricing.commissionAmount'), num('$pricing.commissionGst')] },
             ],
           },
         },
       },
-      { $addFields: { net: { $add: ['$commission', '$platformFee'] } } },
+      { $addFields: { net: { $subtract: [{ $add: ['$commission', '$platformFee'] }, '$subsidy'] } } },
       {
         $facet: {
           total: [{
             $group: {
               _id: null, count: { $sum: 1 }, gross: { $sum: '$gross' }, gst: { $sum: '$gst' },
-              commission: { $sum: '$commission' }, platformFee: { $sum: '$platformFee' },
+              commission: { $sum: '$commission' }, platformFee: { $sum: '$platformFee' }, subsidy: { $sum: '$subsidy' },
               partners: { $sum: '$partners' }, net: { $sum: '$net' },
             },
           }],
@@ -274,6 +276,7 @@ async function hotelStays({ start, end }) {
     lines: [
       { key: 'commission', label: 'Commission from hotels', amount: t.commission || 0 },
       { key: 'platformFee', label: 'Booking fee', amount: t.platformFee || 0 },
+      ...(t.subsidy ? [{ key: 'couponSubsidy', label: 'Hotel coupons paid by the platform', amount: -t.subsidy }] : []),
     ],
     daily: (row?.daily || []).map((d) => ({ date: d._id, net: d.net })),
   };

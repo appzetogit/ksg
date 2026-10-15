@@ -49,6 +49,8 @@ import {
 import { priceStay, round2, customerPricing } from './pricing.service.js';
 import { getHotelSettings } from './settings.service.js';
 import { bookingEvents } from './bookingEvents.js';
+// Importing offer.service also registers its 'transition' listener (coupon release).
+import { validateHotelCoupon, redeemHotelCoupon, undoRedemption } from './offer.service.js';
 import { gateway } from './gateway.js';
 import { ensureWallet, walletBalance, debitWallet, creditWallet } from './wallet.js';
 
@@ -145,14 +147,9 @@ export const splitPayNow = (payNow, balance, useWallet) => {
     return { walletAmount, onlineAmount };
 };
 
-const loadStayContext = async (input) => {
+const loadStayContext = async (input, { userId = null } = {}) => {
     const q = input;
     const stay = parseStay(q.checkIn, q.checkOut);
-    if (q.couponCode) {
-        // Core coupons are per-vertical offer collections (food_offers, qc_offers, taxi
-        // promo codes) with no shared redeem engine yet; see the contract's Deviations.
-        throw new ValidationError('Coupons are not available for hotels yet');
-    }
 
     const property = await HotelProperty.findOne({ ...(await listableMatch()), _id: q.propertyId });
     if (!property) throw new NotFoundError('Property not found');
@@ -179,19 +176,34 @@ const loadStayContext = async (input) => {
         ? { fee: fees.platformFee, gstRate: fees.platformFeeGstRate ?? 18 }
         : null;
 
-    const priced = priceStay({
+    const price = (coupon) => priceStay({
         roomType,
         nights,
         rooms: q.rooms,
         adults: q.adults,
         children: q.children,
         paymentMode: q.paymentMode,
-        coupon: null,
+        coupon,
         settings,
         platformFee,
     });
+    let priced = price(null);
 
-    return { q, stay, property, roomType, settings, nights, fits, available, minAvailable, priced };
+    // Coupon (services/offer.service.js): checked against the stay subtotal, then the
+    // stay is priced again with the discount. A bad code is a 400 with the reason.
+    let coupon = null;
+    if (q.couponCode && String(q.couponCode).trim()) {
+        coupon = await validateHotelCoupon({
+            code: q.couponCode,
+            userId,
+            property,
+            roomType,
+            subtotal: priced.pricing.subtotal,
+        });
+        priced = price({ code: coupon.code, discount: coupon.discount, funding: coupon.funding });
+    }
+
+    return { q, stay, property, roomType, settings, nights, fits, available, minAvailable, priced, coupon };
 };
 
 const policyOf = (property) => ({
@@ -206,7 +218,7 @@ const checkInMomentFor = (property, checkIn) =>
 /** POST /user/bookings/quote: price and availability, no hold. */
 export const quoteBooking = async ({ userId, body }) => {
     const input = parse(quoteSchema, body);
-    const ctx = await loadStayContext(input);
+    const ctx = await loadStayContext(input, { userId });
     const { q, stay, property, settings, priced } = ctx;
     const policy = policyOf(property);
     const terms = policyTerms(policy, checkInMomentFor(property, stay.checkIn));
@@ -229,6 +241,7 @@ export const quoteBooking = async ({ userId, body }) => {
         cancellationPolicy: policy,
         ...(terms.freeCancellationUntil ? { freeCancellationUntil: terms.freeCancellationUntil.toISOString() } : {}),
         holdMinutes: settings.paymentHoldMinutes,
+        ...(ctx.coupon ? { coupon: { code: ctx.coupon.code, title: ctx.coupon.offer.title || '', discount: ctx.coupon.discount } } : {}),
     };
 };
 
@@ -324,8 +337,8 @@ export const assertHoldCapacity = async (userId, now = new Date()) => {
 /** POST /user/bookings. */
 export const createBooking = async ({ userId, body }) => {
     const input = parse(createBookingSchema, body);
-    const ctx = await loadStayContext(input);
-    const { q, stay, property, roomType, settings, priced } = ctx;
+    const ctx = await loadStayContext(input, { userId });
+    const { q, stay, property, roomType, settings, priced, coupon } = ctx;
     if (!ctx.fits) {
         throw new ValidationError(`${roomType.name} fits at most ${roomType.maxAdults} adult(s) and ${roomType.maxChildren || 0} child(ren) per room`);
     }
@@ -402,11 +415,18 @@ export const createBooking = async ({ userId, body }) => {
     await ensureInventoryDays(roomType, stay.checkIn, stay.checkOut);
 
     let reserved = false;
+    let redeemed = false;
     try {
         await runInTransaction(async (session) => {
             reserved = false;
+            redeemed = false;
             await reserve({ roomTypeId: roomType._id, checkIn: stay.checkIn, checkOut: stay.checkOut, units: q.rooms, session });
             reserved = true;
+            if (coupon) {
+                // Total and per-user limits, atomically; a use taken meanwhile aborts here.
+                await redeemHotelCoupon({ coupon, userId, bookingId, session });
+                redeemed = true;
+            }
             await HotelAvailability.create([{
                 propertyId: property._id,
                 roomTypeId: roomType._id,
@@ -436,6 +456,7 @@ export const createBooking = async ({ userId, body }) => {
             if (reserved) {
                 await release({ roomTypeId: roomType._id, checkIn: stay.checkIn, checkOut: stay.checkOut, units: q.rooms }).catch(() => {});
             }
+            if (redeemed) await undoRedemption(bookingId).catch(() => {});
             await HotelAvailability.deleteOne({ bookingId }).catch(() => {});
             await HotelBooking.deleteOne({ _id: bookingId }).catch(() => {});
         }

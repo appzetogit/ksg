@@ -14,6 +14,7 @@ import {
   ShoppingBasket,
   SlidersHorizontal,
   Star,
+  TicketPercent,
   Truck,
   Users,
   UtensilsCrossed,
@@ -58,6 +59,7 @@ const NAV = [
   { to: "/admin/hotel/properties", label: "Properties", icon: Building2, resource: "hotel_properties" },
   { to: "/admin/hotel/bookings", label: "Bookings", icon: CalendarCheck, resource: "hotel_bookings" },
   { to: "/admin/hotel/reviews", label: "Reviews", icon: Star, resource: "hotel_reviews" },
+  { to: "/admin/hotel/offers", label: "Offers", icon: TicketPercent, resource: "promotions" },
   { to: "/admin/hotel/withdrawals", label: "Withdrawals", icon: Landmark, resource: "hotel_withdrawals" },
   { to: "/admin/hotel/settings", label: "Settings", icon: Settings, resource: "hotel_settings" },
 ];
@@ -65,6 +67,7 @@ const NAV = [
 const TITLES = [
   ["/admin/hotel/bookings", "Bookings"],
   ["/admin/hotel/reviews", "Reviews"],
+  ["/admin/hotel/offers", "Offers"],
   ["/admin/hotel/withdrawals", "Withdrawals"],
   ["/admin/hotel/settings", "Settings"],
   ["/admin/hotel/partners", "Partners"],
@@ -187,7 +190,7 @@ function Sidebar({ open, onClose }) {
           )}
         </nav>
         <div className="shrink-0 border-t border-[var(--ha-border)] px-4 py-3 text-[11px] text-[var(--ha-ink-faint)]">
-          Coupons and users are managed in Master.
+          Users are managed in Master; Master › Coupons lists every service's coupons.
         </div>
       </aside>
     </>

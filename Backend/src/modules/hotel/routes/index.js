@@ -41,6 +41,8 @@ import * as admin from '../controllers/admin.controller.js';
 import { userBookingRouter, partnerBookingRouter, adminBookingRouter } from './booking.routes.js';
 // Phase 5 (money, reviews, saved, voucher)
 import { moneyRouter, moneyAdminRouter } from './money.routes.js';
+// Phase 9 (coupons)
+import { userOfferRouter, adminOfferRouter } from './offer.routes.js';
 
 const router = express.Router();
 
@@ -105,9 +107,11 @@ adminRouter.put('/properties/:id/documents/verify', admin.verifyDocuments);
 adminRouter.put('/properties/:id/live', admin.setPropertyLive);
 adminRouter.use(adminBookingRouter); // phase 4: /admin/bookings/*, /admin/settings
 adminRouter.use(moneyAdminRouter); // phase 5: reviews + withdrawals (routes/money.routes.js)
+adminRouter.use(adminOfferRouter); // phase 9: /admin/offers (routes/offer.routes.js)
 router.use('/admin', adminRouter);
 
-// ─── Customer (phase 4 bookings) ───────────────────────────────────────────
+// ─── Customer (phase 4 bookings, phase 9 offers) ───────────────────────────
 router.use('/user', userBookingRouter);
+router.use('/user', userOfferRouter);
 
 export default router;
