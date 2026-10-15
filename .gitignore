@@ -41,3 +41,6 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Claude Code agent worktrees (local only)
+.claude/worktrees/
