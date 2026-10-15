@@ -169,7 +169,13 @@ export default function Dashboard() {
               order={PROPERTY_ORDER}
               linkFor={(s) => `/admin/hotel/properties?status=${s}`}
             />
-            <StatCard title="Bookings" icon={CalendarCheck} counts={bookings} order={BOOKING_ORDER} />
+            <StatCard
+              title="Bookings"
+              icon={CalendarCheck}
+              counts={bookings}
+              order={BOOKING_ORDER}
+              linkFor={(s) => `/admin/hotel/bookings?status=${s}`}
+            />
           </div>
         </div>
       )}

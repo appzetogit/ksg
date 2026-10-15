@@ -116,6 +116,14 @@ export default function Profile() {
     error: errors[key],
   });
 
+  // Links like /profile#sec-bank (from Earnings) jump to that section.
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (!/^#sec-[a-z]+$/.test(hash)) return undefined;
+    const t = setTimeout(() => document.querySelector(hash)?.scrollIntoView({ block: "start", behavior: "smooth" }), 150);
+    return () => clearTimeout(t);
+  }, []);
+
   const termsAlready = Boolean(partner?.termsAcceptedAt);
 
   const done = useMemo(

@@ -13,6 +13,10 @@ const Properties = lazy(() => import("./pages/Properties"));
 const PropertyDetail = lazy(() => import("./pages/PropertyDetail"));
 const PropertyWizard = lazy(() => import("./wizard/PropertyWizard"));
 const Inventory = lazy(() => import("./pages/Inventory"));
+const Bookings = lazy(() => import("./pages/Bookings"));
+const BookingDetail = lazy(() => import("./pages/BookingDetail"));
+const Reviews = lazy(() => import("./pages/Reviews"));
+const Earnings = lazy(() => import("./pages/Earnings"));
 
 const FONT_HREF = "https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap";
 
@@ -36,6 +40,10 @@ function RequireSession({ children }) {
  *   properties/:id             detail
  *   properties/:id/edit?step=  wizard (existing property)
  *   inventory                  calendar + blocks
+ *   bookings?tab=              today / upcoming / in-house / past / cancelled
+ *   bookings/:id               detail: check-in/out, collect payment, no-show, cancel
+ *   reviews                    guest reviews + replies
+ *   earnings                   balance, ledger, withdrawals
  */
 export default function PartnerApp() {
   useEffect(() => {
@@ -65,6 +73,10 @@ export default function PartnerApp() {
             <Route path="properties/:id" element={<PropertyDetail />} />
             <Route path="properties/:id/edit" element={<PropertyWizard />} />
             <Route path="inventory" element={<Inventory />} />
+            <Route path="bookings" element={<Bookings />} />
+            <Route path="bookings/:id" element={<BookingDetail />} />
+            <Route path="reviews" element={<Reviews />} />
+            <Route path="earnings" element={<Earnings />} />
           </Route>
           <Route path="*" element={<Navigate to={BASE_PATH} replace />} />
         </Routes>

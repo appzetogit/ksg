@@ -5,6 +5,11 @@ import PartnersList from "./pages/PartnersList";
 import PartnerDetail from "./pages/PartnerDetail";
 import PropertiesList from "./pages/PropertiesList";
 import PropertyDetail from "./pages/PropertyDetail";
+import BookingsList from "./pages/BookingsList";
+import BookingDetail from "./pages/BookingDetail";
+import ReviewsList from "./pages/ReviewsList";
+import WithdrawalsList from "./pages/WithdrawalsList";
+import Settings from "./pages/Settings";
 
 /**
  * Hotel admin panel, mounted at /admin/hotel/* by Food's AdminRouter (Pattern A:
@@ -21,6 +26,11 @@ export default function HotelAdminApp() {
         <Route path="partners/:id" element={<PartnerDetail />} />
         <Route path="properties" element={<PropertiesList />} />
         <Route path="properties/:id" element={<PropertyDetail />} />
+        <Route path="bookings" element={<BookingsList />} />
+        <Route path="bookings/:id" element={<BookingDetail />} />
+        <Route path="reviews" element={<ReviewsList />} />
+        <Route path="withdrawals" element={<WithdrawalsList />} />
+        <Route path="settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/admin/hotel/dashboard" replace />} />
       </Route>
     </Routes>

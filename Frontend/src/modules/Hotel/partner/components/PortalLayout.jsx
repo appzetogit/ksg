@@ -14,20 +14,21 @@ import {
 import { usePartner } from "../lib/PartnerContext";
 import { BASE_PATH } from "../lib/constants";
 import { hasPartnerSession } from "../../shared/hotelApi";
-import { FullPageSpinner, SoonTag, StatusChip, cx, useConfirm } from "./ui";
+import { FullPageSpinner, StatusChip, cx, useConfirm } from "./ui";
 
 const NAV = [
-  { to: BASE_PATH, end: true, label: "Dashboard", icon: LayoutDashboard },
-  { to: `${BASE_PATH}/properties`, label: "Properties", icon: Building2 },
-  { to: `${BASE_PATH}/inventory`, label: "Inventory", icon: CalendarRange },
+  { to: BASE_PATH, end: true, label: "Dashboard", icon: LayoutDashboard, bottom: true },
+  { to: `${BASE_PATH}/bookings`, label: "Bookings", icon: CalendarDays, bottom: true },
+  { to: `${BASE_PATH}/properties`, label: "Properties", icon: Building2, bottom: true },
+  { to: `${BASE_PATH}/inventory`, label: "Inventory", icon: CalendarRange, bottom: true },
+  { to: `${BASE_PATH}/earnings`, label: "Earnings", icon: Wallet, bottom: true },
+  { to: `${BASE_PATH}/reviews`, label: "Reviews", icon: MessageSquareText },
   { to: `${BASE_PATH}/profile`, label: "Profile", icon: UserRound },
 ];
 
-const LATER = [
-  { label: "Bookings", icon: CalendarDays },
-  { label: "Reviews", icon: MessageSquareText },
-  { label: "Earnings", icon: Wallet },
-];
+// Phones show five tabs at the bottom; the rest sit in the account menu.
+const BOTTOM_NAV = NAV.filter((n) => n.bottom);
+const MENU_NAV = NAV.filter((n) => !n.bottom);
 
 function Brand({ light }) {
   return (
@@ -113,18 +114,6 @@ export default function PortalLayout() {
               )}
             </NavLink>
           ))}
-          <p className="mt-6 px-3 text-[11px] font-semibold uppercase tracking-wider text-blue-200/60">Coming soon</p>
-          {LATER.map(({ label, icon: Icon }) => (
-            <span
-              key={label}
-              aria-disabled="true"
-              className="flex cursor-not-allowed items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-blue-100/40"
-            >
-              <Icon className="h-5 w-5" />
-              <span className="flex-1">{label}</span>
-              <SoonTag />
-            </span>
-          ))}
         </nav>
         <div className="mt-4 rounded-2xl bg-white/5 p-3">
           <div className="flex items-center gap-3">
@@ -171,11 +160,19 @@ export default function PortalLayout() {
                   <StatusChip status={partner?.status} kind="partner" />
                 </div>
                 <div className="mt-3 border-t border-slate-100 pt-2">
-                  <p className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Coming soon</p>
-                  {LATER.map(({ label, icon: Icon }) => (
-                    <span key={label} className="flex items-center gap-2 px-1 py-1.5 text-sm text-slate-400">
-                      <Icon className="h-4 w-4" /> <span className="flex-1">{label}</span> <SoonTag />
-                    </span>
+                  {MENU_NAV.map(({ to, label, icon: Icon }) => (
+                    <NavLink
+                      key={to}
+                      to={to}
+                      className={({ isActive }) =>
+                        cx(
+                          "flex items-center gap-2 rounded-lg px-1 py-2 text-sm font-medium hover:bg-slate-50",
+                          isActive ? "text-[#E85D04]" : "text-slate-700",
+                        )
+                      }
+                    >
+                      <Icon className="h-4 w-4" /> {label}
+                    </NavLink>
                   ))}
                 </div>
                 <button
@@ -203,9 +200,9 @@ export default function PortalLayout() {
       {!inWizard && (
         <nav
           aria-label="Partner portal"
-          className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+          className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
         >
-          {NAV.map(({ to, end, label, icon: Icon }) => (
+          {BOTTOM_NAV.map(({ to, end, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
