@@ -34,6 +34,28 @@ function getTransporter() {
 }
 
 /**
+ * Send one ready-made HTML email. Returns false (never throws) when SMTP is not
+ * configured or the send fails, so callers can treat email as best-effort.
+ */
+export async function sendHtmlEmail({ to, subject, html, fromName = 'KSG' } = {}) {
+  const trans = getTransporter();
+  if (!trans || !to) return false;
+  const from = emailCredentials().from;
+  try {
+    await trans.sendMail({
+      from: typeof from === 'string' && from.includes('<') ? from : `${fromName} <${from}>`,
+      to,
+      subject,
+      html,
+    });
+    return true;
+  } catch (err) {
+    logger.error(`Email to ${to} failed: ${err.message}`);
+    return false;
+  }
+}
+
+/**
  * Normalizes user details to retrieve name and email.
  */
 async function resolveUserDetails(user) {

@@ -1,5 +1,5 @@
 // Partner (approved): inventory calendar, blocks (walk-in / external / manual) and the
-// phase-2 dashboard.
+// dashboard (real booking figures since phase 5).
 
 import mongoose from 'mongoose';
 import { sendResponse } from '../../../utils/response.js';
@@ -8,6 +8,8 @@ import { HotelProperty } from '../models/hotelProperty.model.js';
 import { HotelRoomType } from '../models/hotelRoomType.model.js';
 import { HotelAvailability } from '../models/hotelAvailability.model.js';
 import { HotelInventoryDay } from '../models/hotelInventoryDay.model.js';
+import { HotelBooking } from '../models/hotelBooking.model.js';
+import { bookingSummaryJSON } from '../services/bookingView.js';
 import { parse } from '../validators/partner.validators.js';
 import {
     calendarQuerySchema,
@@ -185,25 +187,67 @@ export const deleteBlock = handle(async (req, res) => {
 
 // ─── dashboard ────────────────────────────────────────────────────────────
 
+const LIVE_STAY = ['confirmed', 'checked_in', 'checked_out'];
+
+/** [first night of this IST month, first night of next month) as Date bounds. */
+const thisMonthRange = (today) => {
+    const [y, m] = today.split('-').map(Number);
+    const next = `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, '0')}-01`;
+    return { $gte: toNightDate(`${today.slice(0, 7)}-01`), $lt: toNightDate(next) };
+};
+
 export const dashboard = handle(async (req, res) => {
-    const rows = await HotelProperty.aggregate([
-        { $match: { partnerId: new mongoose.Types.ObjectId(req.user.userId), isDeleted: { $ne: true } } },
-        {
-            $group: {
-                _id: null,
-                total: { $sum: 1 },
-                live: { $sum: { $cond: [{ $and: [{ $eq: ['$status', 'approved'] }, '$isLive'] }, 1, 0] } },
-                pending: { $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] } },
+    const partnerId = new mongoose.Types.ObjectId(req.user.userId);
+    const today = todayIST();
+    const todayNight = toNightDate(today);
+    const month = thisMonthRange(today);
+
+    const [rows, propertyIds] = await Promise.all([
+        HotelProperty.aggregate([
+            { $match: { partnerId, isDeleted: { $ne: true } } },
+            {
+                $group: {
+                    _id: null,
+                    total: { $sum: 1 },
+                    live: { $sum: { $cond: [{ $and: [{ $eq: ['$status', 'approved'] }, '$isLive'] }, 1, 0] } },
+                    pending: { $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] } },
+                },
             },
-        },
+        ]),
+        HotelProperty.find({ partnerId, isDeleted: { $ne: true } }).distinct('_id'),
     ]);
     const { total = 0, live = 0, pending = 0 } = rows[0] || {};
-    // Booking figures arrive with the booking phase.
+
+    const [todayArrivals, todayDepartures, upcomingBookings, revenueRows, occupancyRows, recent] = await Promise.all([
+        HotelBooking.countDocuments({ partnerId, checkIn: todayNight, status: { $in: ['confirmed', 'checked_in'] } }),
+        HotelBooking.countDocuments({ partnerId, checkOut: todayNight, status: { $in: ['checked_in', 'checked_out'] } }),
+        HotelBooking.countDocuments({ partnerId, status: 'confirmed', checkIn: { $gte: todayNight } }),
+        // Room revenue (tariff + its GST) of stays that start this month.
+        HotelBooking.aggregate([
+            { $match: { partnerId, status: { $in: LIVE_STAY }, checkIn: month } },
+            {
+                $group: {
+                    _id: null,
+                    revenue: { $sum: { $add: [{ $ifNull: ['$pricing.taxableAmount', 0] }, { $ifNull: ['$pricing.gstAmount', 0] }] } },
+                },
+            },
+        ]),
+        // Booked nights (platform bookings and blocks) / sellable nights, this month.
+        HotelInventoryDay.aggregate([
+            { $match: { propertyId: { $in: propertyIds }, date: month } },
+            { $group: { _id: null, booked: { $sum: { $min: ['$booked', '$capacity'] } }, capacity: { $sum: '$capacity' } } },
+        ]),
+        HotelBooking.find({ partnerId, status: { $nin: ['awaiting_payment', 'expired'] } })
+            .sort({ createdAt: -1 }).limit(5).lean(),
+    ]);
+    const occ = occupancyRows[0];
     return sendResponse(res, 200, 'Dashboard', {
         properties: { total, live, pending },
-        todayArrivals: 0,
-        todayDepartures: 0,
-        upcomingBookings: 0,
-        revenueThisMonth: 0,
+        todayArrivals,
+        todayDepartures,
+        upcomingBookings,
+        revenueThisMonth: Math.round((revenueRows[0]?.revenue || 0) * 100) / 100,
+        occupancyThisMonth: occ?.capacity > 0 ? Math.round((occ.booked / occ.capacity) * 10000) / 10000 : 0,
+        recentBookings: recent.map((b) => bookingSummaryJSON(b, { view: 'partner' })),
     });
 });

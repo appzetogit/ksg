@@ -46,7 +46,7 @@ import { KEY_KINDS } from './idempotencyKeys.js';
 
 export const LEDGER_OWNER_TYPES = Object.freeze(['partner', 'user', 'merchant', 'platform']);
 
-export const LEDGER_VERTICALS = Object.freeze(['food', 'quickCommerce', 'taxi', 'serviceProvider', 'platform']);
+export const LEDGER_VERTICALS = Object.freeze(['food', 'quickCommerce', 'taxi', 'serviceProvider', 'hotel', 'platform']);
 
 export const LEDGER_ENTRY_TYPES = Object.freeze([
     'EARNING',

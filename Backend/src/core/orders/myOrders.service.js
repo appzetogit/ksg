@@ -25,6 +25,7 @@ const SERVICE_LABEL = {
   parcel: 'Parcel',
   rental: 'Rental',
   services: 'Services',
+  hotel: 'Stays',
 };
 
 const coll = (name) => mongoose.connection.collection(name);
@@ -181,9 +182,47 @@ async function bookings({ userIds, before, limit }) {
   }));
 }
 
+// Hotel stays (hotel_bookings, keyed by the platform id). Unpaid holds that lapsed or
+// are still waiting for payment are checkouts, not stays, and are left out.
+const HOTEL_HIDDEN = ['awaiting_payment', 'expired'];
+const HOTEL_LABEL = { confirmed: 'Confirmed', checked_in: 'Checked in', checked_out: 'Completed', cancelled: 'Cancelled', no_show: 'No-show' };
+function stayState(status) {
+  if (status === 'checked_out') return 'completed';
+  if (['cancelled', 'no_show', 'expired'].includes(status)) return 'cancelled';
+  return 'ongoing';
+}
+const istDay = (d) => new Date(new Date(d).getTime() + 5.5 * 3600 * 1000)
+  .toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+
+async function stays({ userId, before, limit }) {
+  const docs = await coll('hotel_bookings')
+    .find({ userId: oid(userId), createdAt: { $lt: before }, status: { $nin: HOTEL_HIDDEN } })
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .project({ status: 1, bookingRef: 1, snapshot: 1, checkIn: 1, checkOut: 1, rooms: 1, pricing: 1, createdAt: 1 })
+    .toArray();
+  return docs.map((d) => ({
+    key: `hotel:${d._id}`,
+    id: String(d._id),
+    service: 'hotel',
+    serviceLabel: SERVICE_LABEL.hotel,
+    number: d.bookingRef || String(d._id).slice(-6).toUpperCase(),
+    title: d.snapshot?.propertyName || 'Hotel stay',
+    subtitle: [
+      d.checkIn && d.checkOut ? `${istDay(d.checkIn)} → ${istDay(d.checkOut)}` : '',
+      d.snapshot?.roomTypeName || '',
+    ].filter(Boolean).join(' · '),
+    amount: Number(d.pricing?.total) || 0,
+    state: stayState(d.status),
+    statusLabel: HOTEL_LABEL[d.status] || humanize(d.status),
+    createdAt: d.createdAt,
+    route: `/hotel/bookings/${d._id}`,
+  }));
+}
+
 /* ------------------------------------------------------------------ list */
 
-const SERVICE_FILTERS = ['food', 'quick', 'medical', 'taxi', 'parcel', 'rental', 'services'];
+const SERVICE_FILTERS = ['food', 'quick', 'medical', 'taxi', 'parcel', 'rental', 'services', 'hotel'];
 
 /**
  * @param {string} userId  the signed-in customer's platform id
@@ -210,6 +249,7 @@ export async function listMyOrders(userId, query = {}) {
     want(['quick', 'medical']) ? storeOrders({ collection: 'qc_orders', sellers: 'qc_restaurants', userIds: qcIds, before, limit, key: 'quick', route: (id) => `/qc/order/${id}` }) : [],
     want(['taxi', 'parcel', 'rental']) ? rides({ userId, before, limit }) : [],
     want(['services']) ? bookings({ userIds: spIds, before, limit }) : [],
+    want(['hotel']) ? stays({ userId, before, limit }) : [],
   ]);
 
   let rows = lists.flat();

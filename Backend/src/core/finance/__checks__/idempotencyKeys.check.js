@@ -138,6 +138,7 @@ check('every declared kind is reachable through a named helper', () => {
         keys.forAdminAdjustment('a', 'b'),
         keys.forSubscriptionCharge('a', 'b'),
         keys.forSourceRow('a', 'b'),
+        keys.forHotelBooking('a', 'b', 'c'),
     ].map(keys.kindOf);
     assert.deepEqual([...new Set(minted)].sort(), [...keys.KEY_KINDS].sort());
 });

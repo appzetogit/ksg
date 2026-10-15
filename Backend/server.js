@@ -37,6 +37,7 @@ let manualAssignExpiryInterval = null;
 let fssaiExpiryInterval = null;
 let spScheduler = null;
 let ledgerNightlyInterval = null;
+let hotelRemindersInterval = null;
 
 const gracefulShutdown = async (signal) => {
     logger.info(`${signal} received, starting graceful shutdown`);
@@ -54,6 +55,7 @@ const gracefulShutdown = async (signal) => {
             if (fssaiExpiryInterval) clearInterval(fssaiExpiryInterval);
             if (spScheduler) spScheduler.stop();
             if (ledgerNightlyInterval) clearInterval(ledgerNightlyInterval);
+            if (hotelRemindersInterval) clearInterval(hotelRemindersInterval);
             logger.info('Graceful shutdown complete');
             process.exit(0);
         } catch (err) {
@@ -370,6 +372,17 @@ const startServer = async () => {
 
             runFssaiExpirySync();
             fssaiExpiryInterval = setInterval(runFssaiExpirySync, 60 * 60 * 1000);
+
+            // Hotel check-in reminders and review requests (each booking is claimed by a
+            // conditional flag write, so a second instance cannot send twice).
+            import('./src/modules/hotel/services/notifications.listener.js')
+                .then(({ runHotelReminders }) => {
+                    const tick = () => runHotelReminders()
+                        .catch((err) => logger.error(`Hotel reminders failed: ${err.message}`));
+                    hotelRemindersInterval = setInterval(tick, 30 * 60 * 1000);
+                    hotelRemindersInterval.unref?.();
+                })
+                .catch((err) => logger.error(`Hotel reminders failed to start: ${err.message}`));
         };
 
         if (mongoose.connection.readyState === 1) {

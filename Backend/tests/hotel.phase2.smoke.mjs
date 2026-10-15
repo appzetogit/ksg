@@ -519,7 +519,8 @@ await check('dashboard counts the partner\'s properties', async () => {
     const res = await call(server, 'GET', `${H}/partner/dashboard`, { token: A.token });
     assert.equal(res.status, 200, res.raw);
     assert.deepEqual(res.json.data.properties, { total: 2, live: 2, pending: 0 });
-    assert.equal(res.json.data.upcomingBookings, 0);
+    // Real since phase 5: the confirmed booking made above (d+60) is upcoming.
+    assert.equal(res.json.data.upcomingBookings, 1);
 });
 
 await check('admin lists and details', async () => {

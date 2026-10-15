@@ -55,6 +55,15 @@ const STATUS_MAP = {
         rejected: ACTIVITY_STATUS.CANCELLED,
     },
 };
+STATUS_MAP.hotel = {
+    awaiting_payment: ACTIVITY_STATUS.PENDING,
+    confirmed: ACTIVITY_STATUS.ACTIVE,
+    checked_in: ACTIVITY_STATUS.ACTIVE,
+    checked_out: ACTIVITY_STATUS.COMPLETED,
+    cancelled: ACTIVITY_STATUS.CANCELLED,
+    no_show: ACTIVITY_STATUS.CANCELLED,
+    expired: ACTIVITY_STATUS.CANCELLED,
+};
 // quick-commerce is a fork of food and shares its status machine exactly.
 STATUS_MAP.quickCommerce = STATUS_MAP.food;
 

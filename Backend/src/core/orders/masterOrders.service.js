@@ -15,7 +15,7 @@ import { ValidationError } from '../auth/errors.js';
  * rules (refunds, ledgers, stock) this list does not duplicate.
  */
 
-export const MASTER_ORDER_TABS = ['all', 'food', 'quick', 'medical', 'taxi', 'parcel'];
+export const MASTER_ORDER_TABS = ['all', 'food', 'quick', 'medical', 'taxi', 'parcel', 'hotel'];
 
 /** Order states, grouped the way the filter offers them. */
 const ORDER_STATUS_GROUPS = {
@@ -39,6 +39,17 @@ const models = async () => {
 };
 
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Hotel stays (hotel_bookings). Lapsed unpaid holds are not orders.
+const HOTEL_STATUS_GROUPS = {
+    active: { $in: ['awaiting_payment', 'confirmed', 'checked_in'] },
+    delivered: 'checked_out',
+    cancelled: { $in: ['cancelled', 'no_show'] },
+};
+const hotelBase = ({ status, term }) => ({
+    status: status ? HOTEL_STATUS_GROUPS[status] : { $ne: 'expired' },
+    ...(term ? { bookingRef: { $regex: escapeRegex(term), $options: 'i' } } : {}),
+});
 
 /** Filters per source for one tab; null = the tab does not read that source. */
 const filtersFor = (tab, { status, search }) => {
@@ -68,6 +79,7 @@ const filtersFor = (tab, { status, search }) => {
         medical: ['all', 'medical'].includes(tab) ? withStatus(medical) : null,
         taxi: ['all', 'taxi'].includes(tab) ? rideBase('ride') : null,
         parcel: ['all', 'parcel'].includes(tab) ? rideBase('parcel') : null,
+        hotel: ['all', 'hotel'].includes(tab) ? hotelBase({ status, term }) : null,
     };
     // An order-number search never matches a ride (rides have no order number).
     if (term && !mongoose.Types.ObjectId.isValid(term)) { out.taxi = null; out.parcel = null; }
@@ -153,6 +165,30 @@ const rideRow = (r, maps) => {
     };
 };
 
+const hotelRow = (b, users) => {
+    const user = users.get(String(b.userId || ''));
+    return {
+        _id: String(b._id),
+        orderId: b.bookingRef || String(b._id),
+        source: 'hotel',
+        vertical: 'hotel',
+        orderStatus: b.status || '',
+        status: b.status || '',
+        customerName: pickName(user, 'name', 'fullName') || pickName(b.guestDetails, 'name') || 'Customer',
+        customerPhone: user?.phone || b.guestDetails?.phone || '',
+        storeName: b.snapshot?.propertyName || '',
+        riderName: '',
+        riderPhone: '',
+        total: Number(b.pricing?.total) || 0,
+        paymentMethod: b.payment?.mode || '',
+        paymentStatus: b.payment?.status || '',
+        address: b.snapshot?.address || '',
+        dispatch: null,
+        statusHistory: Array.isArray(b.statusHistory) ? b.statusHistory.slice(-6) : [],
+        createdAt: b.createdAt,
+    };
+};
+
 /** An order still being worked on: deleting it would strand its rider, store and customer. */
 const ORDER_IN_PROGRESS = ['created', 'confirmed', 'preparing', 'ready_for_pickup', 'ready', 'reached_pickup', 'picked_up', 'reached_drop'];
 const RIDE_IN_PROGRESS = ['searching', 'accepted', 'ongoing', 'arriving', 'started', 'arrived'];
@@ -168,6 +204,8 @@ const RIDE_IN_PROGRESS = ['searching', 'accepted', 'ongoing', 'arriving', 'start
  */
 export async function deleteMasterOrder({ source, id, adminId = '' } = {}) {
     if (!mongoose.Types.ObjectId.isValid(String(id))) throw new ValidationError('Invalid order id');
+    // A stay carries payments, refunds and ledger settlement; it is cancelled, never deleted.
+    if (source === 'hotel') throw new ValidationError('Hotel bookings cannot be deleted. Cancel the booking from the Hotel panel instead.');
     const { FoodOrder, QcOrder, Ride } = await models();
 
     if (source === 'taxi' || source === 'parcel') {
@@ -214,6 +252,7 @@ export async function listMasterOrders(query = {}) {
         medical: { model: QcOrder },
         taxi: { model: Ride },
         parcel: { model: Ride },
+        hotel: { model: { collection: mongoose.connection.collection('hotel_bookings') } },
     };
     const filters = filtersFor(tab, { status, search });
 
@@ -239,7 +278,7 @@ export async function listMasterOrders(query = {}) {
     const pick = (keys, field) => merged.filter((m) => keys.includes(m.key)).map((m) => m.row[field]);
     const foodRows = merged.filter((m) => m.key === 'food');
     const qcRows = merged.filter((m) => m.key === 'quick' || m.key === 'medical');
-    const [foodUsers, qcUsers, foodStores, qcStores, foodRiders, qcRiders, taxiUsers, drivers] = await Promise.all([
+    const [foodUsers, qcUsers, foodStores, qcStores, foodRiders, qcRiders, taxiUsers, drivers, hotelUsers] = await Promise.all([
         byIds('users', foodRows.map((m) => m.row.userId), { name: 1, phone: 1 }),
         byIds('qc_users', qcRows.map((m) => m.row.userId), { name: 1, phone: 1 }),
         byIds('food_restaurants', foodRows.map((m) => m.row.restaurantId), { restaurantName: 1 }),
@@ -248,10 +287,12 @@ export async function listMasterOrders(query = {}) {
         byIds('qc_delivery_partners', qcRows.map((m) => m.row.dispatch?.deliveryPartnerId), { name: 1, phone: 1 }),
         byIds('users', pick(['taxi', 'parcel'], 'userId'), { name: 1, phone: 1 }),
         byIds('taxidrivers', pick(['taxi', 'parcel'], 'driverId'), { name: 1, phone: 1 }),
+        byIds('users', pick(['hotel'], 'userId'), { name: 1, phone: 1 }),
     ]);
 
     const orders = merged.map(({ key, row }) => {
         if (key === 'taxi' || key === 'parcel') return rideRow(row, { taxiUsers, drivers });
+        if (key === 'hotel') return hotelRow(row, hotelUsers);
         const food = key === 'food';
         return orderRow(row, key, {
             users: food ? foodUsers : qcUsers,

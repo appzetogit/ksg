@@ -18,7 +18,7 @@ import mongoose from 'mongoose';
  *   - "what have they spent with us across the platform"
  */
 
-export const ACTIVITY_VERTICALS = Object.freeze(['food', 'quickCommerce', 'taxi', 'serviceProvider']);
+export const ACTIVITY_VERTICALS = Object.freeze(['food', 'quickCommerce', 'taxi', 'serviceProvider', 'hotel']);
 
 /**
  * Normalised lifecycle, shared by all four. The verticals disagree on almost

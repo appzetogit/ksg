@@ -552,7 +552,7 @@ router.use('/v1/hotel', requireModuleEnabled(MODULES.HOTEL), hotelRouter);
 | 2 | Partner onboarding & properties **(done, backend)** | partner KYC, property + room-type CRUD, documents, admin approval APIs, inventory days backfill | 4–5 d |
 | 3 | Search & availability **(done, backend)** | search aggregation, availability endpoint, inventory guard, calendar APIs | 3 d |
 | 4 | Booking & payments | pricing service (+unit tests), quote/create/verify, Razorpay + webhook, wallet, state machine, cancellation/refunds | 5–6 d |
-| 5 | Money & jobs | ledger settlement, withdrawals, finance/P&L hooks, background jobs, notifications, voucher PDF | 3–4 d |
+| 5 | Money & jobs **(done, backend)** | ledger settlement, withdrawals, finance/P&L hooks, background jobs, notifications, voucher PDF | 3–4 d |
 | 6 | Frontend — partner | onboarding, wizard, dashboard, inventory calendar, bookings, reviews, earnings | 6–7 d |
 | 7 | Frontend — customer | search, listing, detail, checkout, my stays, reviews, saved; landing + home links | 6–7 d |
 | 8 | Frontend — admin | hotel admin panel, switcher tabs, settings | 3–4 d |
@@ -575,6 +575,19 @@ Deviations section; tests: `Backend/tests/hotel.phase2.smoke.mjs`):
   create/update and the calendar/reserve create missing rows on demand; the seed
   (`scripts/seed-hotel.js`) skips settings keys (none registered yet) and the demo
   booking/review (booking phase).
+
+**Phase 5 backend, as built** (API + deviations: `docs/hotel-api-contract.md`, "Deviations
+(backend, phase 5)"; tests: `Backend/tests/hotel.money.smoke.mjs`):
+- Settlement and notifications are listeners on `services/bookingEvents.js`
+  (`settlement.listener.js`, `notifications.listener.js`), registered by `routes/money.routes.js`.
+- Withdrawals use `HotelWithdrawal` (`hotel_withdrawals`) with a ledger hold, not
+  `core/payments/settlement.service.js` (restaurant/rider only).
+- Voucher is printable HTML, not a pdfkit PDF (no new dependency).
+- Only the 30-min reminder job is scheduled here; the payment-expiry warning, no-show
+  sweep and monthly summary email are not built yet. No Redis lock: each send is claimed
+  by a conditional flag write instead.
+- Settings come from the contract defaults until `services/settings.service.js` exists
+  (`services/moneySettings.js`, TODO).
 
 ≈ 6–8 weeks for one developer; backend phases 1–5 and frontend 6–8 can run in parallel
 with two people once phase 1 lands.

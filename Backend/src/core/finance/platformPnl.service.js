@@ -22,6 +22,8 @@ import { decideAdminAccess } from '../admin/adminAccessPolicy.js';
  *                          (driver/services/walletService.js).
  *   Services               paid vendor bills: companyRevenue less its GST, which
  *                          is the government's (models/VendorBill.js).
+ *   Hotels                 checked-out stays: commission + booking fee, GST
+ *                          beside it (modules/hotel, pricing on hotel_bookings).
  *
  * GST is shown beside the income, never in it: it was collected for the
  * government. Orders are counted by the day they were placed (rides by the day
@@ -38,6 +40,7 @@ const SERVICES = {
   quick: { label: 'Quick & Medical', service: 'quickCommerce', unit: 'orders' },
   taxi: { label: 'Taxi', service: 'taxi', unit: 'rides' },
   services: { label: 'Services', service: 'serviceProvider', unit: 'bookings' },
+  hotel: { label: 'Hotels', service: 'hotel', unit: 'stays' },
 };
 
 const round = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -220,11 +223,68 @@ async function serviceBills({ start, end }) {
   };
 }
 
+/* ------------------------------------------------------------- Hotels */
+
+/**
+ * Completed stays (checked_out), by the check-out date. The platform keeps the
+ * commission and the booking fee; their GST, and the room GST the hotel charged, are
+ * the government's. Partners get the room tariff + its GST less commission + its GST.
+ */
+async function hotelStays({ start, end }) {
+  const [row] = await coll('hotel_bookings')
+    .aggregate([
+      { $match: { status: 'checked_out', checkOut: { $gte: start, $lte: end } } },
+      {
+        $project: {
+          day: dayOf('$checkOut'),
+          gross: num('$pricing.total'),
+          gst: { $add: [num('$pricing.gstAmount'), num('$pricing.platformFeeGst'), num('$pricing.commissionGst')] },
+          commission: num('$pricing.commissionAmount'),
+          platformFee: num('$pricing.platformFee'),
+          partners: {
+            $subtract: [
+              { $add: [num('$pricing.taxableAmount'), num('$pricing.gstAmount')] },
+              { $add: [num('$pricing.commissionAmount'), num('$pricing.commissionGst')] },
+            ],
+          },
+        },
+      },
+      { $addFields: { net: { $add: ['$commission', '$platformFee'] } } },
+      {
+        $facet: {
+          total: [{
+            $group: {
+              _id: null, count: { $sum: 1 }, gross: { $sum: '$gross' }, gst: { $sum: '$gst' },
+              commission: { $sum: '$commission' }, platformFee: { $sum: '$platformFee' },
+              partners: { $sum: '$partners' }, net: { $sum: '$net' },
+            },
+          }],
+          daily: [{ $group: { _id: '$day', net: { $sum: '$net' } } }, { $sort: { _id: 1 } }],
+        },
+      },
+    ])
+    .toArray();
+  const t = row?.total?.[0] || {};
+  return {
+    count: t.count || 0,
+    gross: t.gross || 0,
+    gst: t.gst || 0,
+    partners: t.partners || 0,
+    net: t.net || 0,
+    lines: [
+      { key: 'commission', label: 'Commission from hotels', amount: t.commission || 0 },
+      { key: 'platformFee', label: 'Booking fee', amount: t.platformFee || 0 },
+    ],
+    daily: (row?.daily || []).map((d) => ({ date: d._id, net: d.net })),
+  };
+}
+
 const LOADERS = {
   food: (r) => storeOrders('food_transactions', 'food_orders', r),
   quick: (r) => storeOrders('qc_transactions', 'qc_orders', r),
   taxi: taxiRides,
   services: serviceBills,
+  hotel: hotelStays,
 };
 
 /* ------------------------------------------------------------- report */
