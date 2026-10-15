@@ -1,4 +1,5 @@
 import { logger } from '../utils/logger.js';
+import { redactUrl } from '../utils/redactUrl.js';
 
 /**
  * Logs API request method, path, status code, response time, and request ID.
@@ -9,7 +10,7 @@ export const responseTimeLogger = (req, res, next) => {
     const requestId = req.requestId || '-';
     res.on('finish', () => {
         const duration = Date.now() - start;
-        logger.info(`[${requestId}] ${req.method} ${req.originalUrl} ${res.statusCode} ${duration}ms`);
+        logger.info(`[${requestId}] ${req.method} ${redactUrl(req.originalUrl)} ${res.statusCode} ${duration}ms`);
     });
     next();
 };

@@ -2,6 +2,8 @@
 
 import crypto from 'node:crypto';
 import mongoose from 'mongoose';
+import jwt from 'jsonwebtoken';
+import { config } from '../../../config/env.js';
 import { sendResponse, sendError } from '../../../utils/response.js';
 import { NotFoundError } from '../../../core/auth/errors.js';
 import { verifyAccessToken } from '../../../core/auth/token.util.js';
@@ -199,20 +201,70 @@ const supportContact = async () => {
     }
 };
 
-/** GET /user/bookings/:id/voucher — token from the Authorization header or ?token=. */
-export const voucher = async (req, res, next) => {
-    try {
-        const header = req.headers.authorization || '';
-        const token = header.startsWith('Bearer ') ? header.slice(7) : (typeof req.query.token === 'string' ? req.query.token : '');
-        if (!token) return sendError(res, 401, 'Authentication token missing');
+// ─── voucher links ────────────────────────────────────────────────────────
+//
+// The voucher opens in a plain browser tab, so it cannot send an Authorization header.
+// Putting the customer's ACCESS token in the URL (?token=) leaks a full session into
+// browser history, proxies and logs. Instead the app asks for a voucher link: a JWT
+// good for VOUCHER_LINK_TTL_SEC, for ONE booking, signed with a key derived from the
+// access secret so it can never pass core authMiddleware as a session token.
+
+export const VOUCHER_LINK_TTL_SEC = 5 * 60;
+const VOUCHER_PURPOSE = 'hotel_voucher';
+const voucherSecret = () => `${config.jwtAccessSecret}:hotel-voucher`;
+
+export const signVoucherToken = (bookingId, userId) =>
+    jwt.sign({ purpose: VOUCHER_PURPOSE, bookingId: String(bookingId), userId: String(userId) }, voucherSecret(), {
+        expiresIn: VOUCHER_LINK_TTL_SEC,
+    });
+
+/** POST /user/bookings/:id/voucher-link (customer auth) -> { token, expiresIn }. */
+export const voucherLink = handle(async (req, res) => {
+    const booking = isObjectId(req.params.id)
+        ? await HotelBooking.findOne({ _id: req.params.id, userId: req.user.userId }).select('_id').lean()
+        : null;
+    if (!booking) throw new NotFoundError('Booking not found');
+    return sendResponse(res, 200, 'Voucher link', {
+        token: signVoucherToken(booking._id, req.user.userId),
+        expiresIn: VOUCHER_LINK_TTL_SEC,
+    });
+});
+
+/** The customer id a voucher request is made as, or an [status, message] refusal. */
+const voucherCaller = (req) => {
+    if (typeof req.query.vt === 'string' && req.query.vt) {
         let decoded;
         try {
-            decoded = verifyAccessToken(token);
+            decoded = jwt.verify(req.query.vt, voucherSecret());
         } catch {
-            return sendError(res, 401, 'Invalid or expired token');
+            return [401, 'This voucher link has expired. Open the voucher again from your booking.'];
         }
-        const userId = String(decoded.userId || decoded.sub || '');
-        if (String(decoded.role || '').toUpperCase() !== 'USER' || !mongoose.Types.ObjectId.isValid(userId)) {
+        if (decoded?.purpose !== VOUCHER_PURPOSE || String(decoded.bookingId) !== String(req.params.id)) {
+            return [403, 'This link is not for this booking'];
+        }
+        return { userId: String(decoded.userId || '') };
+    }
+    // Legacy: a session access token in the header, or (older app builds) ?token=.
+    const header = req.headers.authorization || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : (typeof req.query.token === 'string' ? req.query.token : '');
+    if (!token) return [401, 'Authentication token missing'];
+    let decoded;
+    try {
+        decoded = verifyAccessToken(token);
+    } catch {
+        return [401, 'Invalid or expired token'];
+    }
+    if (String(decoded.role || '').toUpperCase() !== 'USER') return [403, 'Customer access required'];
+    return { userId: String(decoded.userId || decoded.sub || '') };
+};
+
+/** GET /user/bookings/:id/voucher — ?vt= voucher link, or a session token (header / ?token=). */
+export const voucher = async (req, res, next) => {
+    try {
+        const caller = voucherCaller(req);
+        if (Array.isArray(caller)) return sendError(res, caller[0], caller[1]);
+        const { userId } = caller;
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
             return sendError(res, 403, 'Customer access required');
         }
         const user = await FoodUser.findById(userId).select('isActive').lean();

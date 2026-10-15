@@ -10,9 +10,22 @@ import {
     AVAILABILITY_SOURCES,
     TIME_OF_DAY,
 } from '../constants.js';
+import { isPrivatePath } from '../../../core/files/privateFiles.js';
 
 const str = (max) => z.string().trim().max(max);
-const url = str(1000);
+
+// Photos are shown to everyone. A link into a private upload folder (KYC, licences)
+// must not be accepted as one: responses to signed-in callers re-sign private links
+// (core/files/privateFiles.js), so storing one would hand out someone's document.
+const PRIVATE_LINK = /\/(?:uploads|api\/v1\/files\/p)\/([^?#]+)/;
+export const isPublicImageUrl = (s) => {
+    const m = PRIVATE_LINK.exec(String(s || ''));
+    if (!m) return true;
+    let rel = m[1];
+    try { rel = decodeURIComponent(rel); } catch { /* keep the raw path */ }
+    return !isPrivatePath(rel);
+};
+const url = str(1000).refine(isPublicImageUrl, 'must be a public photo link, not a private document');
 const money = z.number().min(0).max(10_000_000).transform((n) => Math.round(n * 100) / 100);
 const count = (min, max) => z.number().int().min(min).max(max);
 const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'must be YYYY-MM-DD');

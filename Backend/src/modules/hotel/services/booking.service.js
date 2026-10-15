@@ -299,6 +299,28 @@ const ensureGatewayOrder = async (booking) => {
     return checkoutPayload(booking);
 };
 
+/**
+ * How many unpaid online holds (awaiting_payment, hold not yet ended) one customer may
+ * have at once. Each hold takes rooms off sale for paymentHoldMinutes, so without a cap
+ * one account could keep a property "sold out" by re-booking without paying.
+ */
+export const MAX_ACTIVE_HOLDS_PER_USER = 3;
+
+/** 409 (code too_many_holds) when the customer already has the maximum unpaid holds. */
+export const assertHoldCapacity = async (userId, now = new Date()) => {
+    const holds = await HotelBooking.countDocuments({
+        userId,
+        status: 'awaiting_payment',
+        'payment.expiresAt': { $gt: now },
+    });
+    if (holds >= MAX_ACTIVE_HOLDS_PER_USER) {
+        throw new ConflictError(
+            `You already have ${holds} bookings waiting for payment. Complete or cancel one of them before booking again.`,
+            { code: 'too_many_holds' },
+        );
+    }
+};
+
 /** POST /user/bookings. */
 export const createBooking = async ({ userId, body }) => {
     const input = parse(createBookingSchema, body);
@@ -317,6 +339,7 @@ export const createBooking = async ({ userId, body }) => {
     }
     const { walletAmount, onlineAmount } = split;
     const status = onlineAmount > 0 ? 'awaiting_payment' : 'confirmed';
+    if (status === 'awaiting_payment') await assertHoldCapacity(userId);
     const now = new Date();
     const actor = { role: 'user', id: userId };
     const bookingId = new mongoose.Types.ObjectId();
@@ -520,23 +543,103 @@ export const splitRefund = (booking, amount) => {
     return { amount: amt, gatewayAmount, walletAmount: sub(amt, gatewayAmount) };
 };
 
+/** Rupees, rounded to paise, as an aggregation expression over `expr`. */
+const roundExpr = (expr) => ({ $round: [expr, 2] });
+const fieldOr0 = (path) => ({ $ifNull: [path, 0] });
+/** What is still refundable from one source, as an aggregation expression. */
+const heldExpr = (paidPath, refundedPath) => ({ $subtract: [fieldOr0(paidPath), fieldOr0(refundedPath)] });
+// Float slack when comparing rupee amounts that were summed in the database.
+const CAP_SLACK = 0.001;
+
+/** payment.status from the stored figures, as an aggregation expression (paymentStatusFor). */
+const paymentStatusExpr = {
+    $switch: {
+        branches: [
+            {
+                case: { $gt: [fieldOr0('$payment.refundedAmount'), 0] },
+                then: {
+                    $cond: [
+                        { $gte: [{ $add: [fieldOr0('$payment.refundedAmount'), CAP_SLACK] }, fieldOr0('$payment.amountPaid')] },
+                        'refunded',
+                        'partially_refunded',
+                    ],
+                },
+            },
+            { case: { $lte: [fieldOr0('$payment.amountPaid'), 0] }, then: 'pending' },
+            {
+                case: { $gte: [{ $add: [fieldOr0('$payment.amountPaid'), CAP_SLACK] }, fieldOr0('$pricing.total')] },
+                then: 'paid',
+            },
+        ],
+        default: 'partially_paid',
+    },
+};
+
+/**
+ * Claim a refund: one atomic update that (a) refuses a key already used, (b) refuses
+ * more than the platform still holds per source (wallet / gateway), and (c) reserves
+ * the amounts by adding them to walletRefunded / gatewayRefunded / refundedAmount
+ * straight away. Two refunds racing (a partner cancel and an admin manual refund, say)
+ * therefore can never together pay out more than was paid in.
+ * @returns the claimed booking, or null
+ */
+const claimRefund = (bookingId, entry) => HotelBooking.findOneAndUpdate(
+    {
+        _id: bookingId,
+        'refunds.key': { $ne: entry.key },
+        $expr: {
+            $and: [
+                { $lte: [entry.walletAmount, { $add: [heldExpr('$payment.walletAmount', '$payment.walletRefunded'), CAP_SLACK] }] },
+                { $lte: [entry.gatewayAmount, { $add: [heldExpr('$payment.onlinePaid', '$payment.gatewayRefunded'), CAP_SLACK] }] },
+            ],
+        },
+    },
+    [{
+        $set: {
+            // $literal: a reason that starts with '$' must stay text, not a field path.
+            refunds: { $concatArrays: [{ $ifNull: ['$refunds', []] }, [{ $literal: entry }]] },
+            'payment.walletRefunded': roundExpr({ $add: [fieldOr0('$payment.walletRefunded'), entry.walletAmount] }),
+            'payment.gatewayRefunded': roundExpr({ $add: [fieldOr0('$payment.gatewayRefunded'), entry.gatewayAmount] }),
+            'payment.refundedAmount': roundExpr({ $add: [fieldOr0('$payment.refundedAmount'), entry.amount] }),
+        },
+    }],
+    { new: true, lean: true },
+);
+
 /**
  * Pay a refund once per `key`: wallet part to the customer's KSG wallet, gateway part
  * through core refunds (a Refund row via refund.service.initiateRefund, then Razorpay).
  * Emits 'refund' with what actually moved.
+ *
+ * Never refunds more than the platform still holds for the booking, per source, even
+ * under concurrency (see claimRefund). With `clamp` (the default) a request that no
+ * longer fits -- another refund landed in between -- is cut down to what is left;
+ * without it, it is refused ({ capped: true }).
  */
-export const applyRefund = async (bookingId, { key, walletAmount = 0, gatewayAmount = 0, reason = '', by = 'system' }) => {
+export const applyRefund = async (bookingId, { key, walletAmount = 0, gatewayAmount = 0, reason = '', by = 'system', clamp = true }) => {
     walletAmount = round2(walletAmount);
     gatewayAmount = round2(gatewayAmount);
-    const amount = add(walletAmount, gatewayAmount);
+    let amount = add(walletAmount, gatewayAmount);
     if (!(amount > 0)) return { booking: await HotelBooking.findById(bookingId).lean(), refunded: 0 };
 
-    const claimed = await HotelBooking.findOneAndUpdate(
-        { _id: bookingId, 'refunds.key': { $ne: key } },
-        { $push: { refunds: { key, amount, walletAmount, gatewayAmount, status: 'pending', reason, by, at: new Date() } } },
-        { new: true, lean: true },
-    );
-    if (!claimed) return { booking: await HotelBooking.findById(bookingId).lean(), refunded: 0, duplicate: true };
+    let claimed = null;
+    for (let attempt = 0; attempt < 3 && !claimed; attempt++) {
+        claimed = await claimRefund(bookingId, {
+            key, amount, walletAmount, gatewayAmount, status: 'pending', reason, by, at: new Date(),
+        });
+        if (claimed) break;
+        const current = await HotelBooking.findById(bookingId).lean();
+        if (!current) throw new NotFoundError('Booking not found');
+        if ((current.refunds || []).some((r) => r.key === key)) return { booking: current, refunded: 0, duplicate: true };
+        // Over the cap: someone else refunded meanwhile.
+        if (!clamp) return { booking: current, refunded: 0, capped: true };
+        const left = refundableParts(current);
+        walletAmount = Math.min(walletAmount, left.wallet);
+        gatewayAmount = Math.min(gatewayAmount, left.online);
+        amount = add(walletAmount, gatewayAmount);
+        if (!(amount > 0)) return { booking: current, refunded: 0, capped: true };
+    }
+    if (!claimed) return { booking: await HotelBooking.findById(bookingId).lean(), refunded: 0, capped: true };
 
     let walletDone = 0;
     let gatewayDone = 0;
@@ -583,8 +686,8 @@ export const applyRefund = async (bookingId, { key, walletAmount = 0, gatewayAmo
                     $set: { status: 'processed', gatewayRefundId: rz?.id || '', processedAt: new Date() },
                 });
                 gatewayDone = gatewayAmount;
-                const gatewayTotal = add(claimed.payment.gatewayRefunded || 0, gatewayAmount);
-                if (gatewayTotal >= (claimed.payment.onlinePaid || 0)) {
+                // claimed.payment.gatewayRefunded already includes this refund (reserved).
+                if (toPaise(claimed.payment.gatewayRefunded || 0) >= toPaise(claimed.payment.onlinePaid || 0)) {
                     await Payment.updateOne({ _id: paymentRow._id }, { $set: { status: 'refunded' } });
                 }
             } catch (err) {
@@ -598,30 +701,36 @@ export const applyRefund = async (bookingId, { key, walletAmount = 0, gatewayAmo
     }
 
     const refundedNow = add(walletDone, gatewayDone);
-    const p = claimed.payment;
-    const walletRefunded = add(p.walletRefunded || 0, walletDone);
-    const gatewayRefunded = add(p.gatewayRefunded || 0, gatewayDone);
-    const refundedAmount = add(walletRefunded, gatewayRefunded);
     // `amount` stays what was requested; walletAmount/gatewayAmount become what actually
-    // moved, so a 'failed' entry shows exactly which part still needs doing.
-    const set = {
-        'refunds.$.status': failed ? 'failed' : 'processed',
-        'refunds.$.walletAmount': walletDone,
-        'refunds.$.gatewayAmount': gatewayDone,
-        ...(refundId ? { 'refunds.$.refundId': refundId } : {}),
-        ...(gatewayRefundId ? { 'refunds.$.gatewayRefundId': gatewayRefundId } : {}),
+    // moved, so a 'failed' entry shows exactly which part still needs doing. The part
+    // reserved by the claim that did not move is handed back.
+    const patch = {
+        status: failed ? 'failed' : 'processed',
+        walletAmount: walletDone,
+        gatewayAmount: gatewayDone,
+        ...(refundId ? { refundId } : {}),
+        ...(gatewayRefundId ? { gatewayRefundId } : {}),
     };
-    if (refundedNow > 0) {
-        Object.assign(set, {
-            'payment.walletRefunded': walletRefunded,
-            'payment.gatewayRefunded': gatewayRefunded,
-            'payment.refundedAmount': refundedAmount,
-            'payment.status': paymentStatusFor({ total: claimed.pricing.total, amountPaid: p.amountPaid, refundedAmount }),
-        });
-    }
+    const walletBack = sub(walletAmount, walletDone);
+    const gatewayBack = sub(gatewayAmount, gatewayDone);
+    const pipeline = [{
+        $set: {
+            refunds: {
+                $map: {
+                    input: '$refunds',
+                    as: 'r',
+                    in: { $cond: [{ $eq: ['$$r.key', key] }, { $mergeObjects: ['$$r', { $literal: patch }] }, '$$r'] },
+                },
+            },
+            'payment.walletRefunded': roundExpr({ $subtract: [fieldOr0('$payment.walletRefunded'), walletBack] }),
+            'payment.gatewayRefunded': roundExpr({ $subtract: [fieldOr0('$payment.gatewayRefunded'), gatewayBack] }),
+            'payment.refundedAmount': roundExpr({ $subtract: [fieldOr0('$payment.refundedAmount'), add(walletBack, gatewayBack)] }),
+        },
+    }];
+    if (refundedNow > 0) pipeline.push({ $set: { 'payment.status': paymentStatusExpr } });
     const booking = await HotelBooking.findOneAndUpdate(
         { _id: bookingId, 'refunds.key': key },
-        { $set: set },
+        pipeline,
         { new: true, lean: true },
     );
     if (refundedNow > 0) {
@@ -742,8 +851,49 @@ export const expireStaleBookings = async ({ now = new Date(), limit = 200 } = {}
 
 // ─── payment confirmation ────────────────────────────────────────────────
 
+/**
+ * A second capture on an order whose booking already holds a different payment (the
+ * guest paid twice, or a late authorisation was auto-captured). It is not part of the
+ * booking's money, so it is refunded on its own, straight to the gateway, once per
+ * payment id (refunds[].key `stray:<paymentId>`). Booking totals are not touched.
+ */
+const refundStrayCapture = async (booking, { paymentId, amount }) => {
+    const key = `stray:${paymentId}`;
+    const claimed = await HotelBooking.findOneAndUpdate(
+        { _id: booking._id, 'refunds.key': { $ne: key } },
+        {
+            $push: {
+                refunds: {
+                    key, amount, walletAmount: 0, gatewayAmount: amount, status: 'pending',
+                    reason: 'Duplicate payment on this booking', by: 'system', at: new Date(),
+                },
+            },
+        },
+        { new: true, lean: true },
+    );
+    if (!claimed) return HotelBooking.findById(booking._id).lean();
+    logger.error(`[hotel] DUPLICATE CAPTURE ${paymentId} (Rs ${amount}) on ${booking.bookingRef}; refunding it`);
+    let status = 'processed';
+    let gatewayRefundId;
+    try {
+        const rz = await gateway.refund(paymentId, amount, { bookingRef: booking.bookingRef, key });
+        gatewayRefundId = rz?.id;
+    } catch (err) {
+        status = 'failed';
+        logger.error(`[hotel] duplicate-capture refund failed for ${booking.bookingRef} (${paymentId}): ${err.message}`);
+    }
+    return HotelBooking.findOneAndUpdate(
+        { _id: booking._id, 'refunds.key': key },
+        { $set: { 'refunds.$.status': status, ...(gatewayRefundId ? { 'refunds.$.gatewayRefundId': gatewayRefundId } : {}) } },
+        { new: true, lean: true },
+    );
+};
+
 /** Late capture (booking already expired/cancelled): send the money straight back. */
 const refundLateCapture = async (booking, { paymentId, amount, orderId }) => {
+    if (booking.payment.razorpayPaymentId && booking.payment.razorpayPaymentId !== paymentId) {
+        return refundStrayCapture(booking, { paymentId, amount });
+    }
     await recordPayment({
         vertical: 'hotel',
         userId: booking.userId,
@@ -762,7 +912,7 @@ const refundLateCapture = async (booking, { paymentId, amount, orderId }) => {
         { $set: { 'payment.razorpayPaymentId': paymentId, 'payment.onlinePaid': amount, 'payment.amountPaid': add(booking.payment.amountPaid || 0, amount) } },
     );
     const fresh = await HotelBooking.findById(booking._id).lean();
-    if (fresh.payment.razorpayPaymentId !== paymentId) return fresh;
+    if (fresh.payment.razorpayPaymentId !== paymentId) return refundStrayCapture(fresh, { paymentId, amount });
     emit('payment', { booking: fresh, amount, kind: 'online', paymentId });
     const { booking: refunded } = await applyRefund(booking._id, {
         key: `late:${paymentId}`,
@@ -885,8 +1035,13 @@ export const handleHotelPaymentCaptured = async (paymentEntity) => {
         });
         logger.info(`[hotel] webhook payment.captured ${booking.bookingRef}: ${outcome}`);
     } catch (err) {
-        // Acknowledge regardless (a non-200 makes Razorpay retry an event that cannot succeed).
         logger.error(`[hotel] webhook payment.captured ${booking.bookingRef} not applied: ${err.message}`);
+        // A 4xx (amount or order mismatch) can never succeed: acknowledge it. Anything
+        // else (database or gateway trouble) must be retried by Razorpay -- swallowing it
+        // left captured money on a booking that then expired with nobody refunding it.
+        if (!err?.statusCode || err.statusCode >= 500) {
+            throw Object.assign(err instanceof Error ? err : new Error(String(err)), { retryable: true });
+        }
     }
     return true;
 };
@@ -972,14 +1127,15 @@ export const manualRefund = async (booking, { amount, reason, adminId }) => {
     }
     const split = splitRefund(booking, amount);
     const n = (booking.refunds || []).filter((r) => r.key.startsWith('manual:')).length;
-    const { booking: out, failed, duplicate } = await applyRefund(booking._id, {
+    const { booking: out, failed, duplicate, capped } = await applyRefund(booking._id, {
         key: `manual:${n + 1}`,
         walletAmount: split.walletAmount,
         gatewayAmount: split.gatewayAmount,
         reason,
         by: 'admin',
+        clamp: false,
     });
-    if (duplicate) throw new ConflictError('Another refund was just recorded on this booking; reload and try again');
+    if (duplicate || capped) throw new ConflictError('Another refund was just recorded on this booking; reload and try again');
     if (failed) throw httpError(502, 'The refund could not be completed; see the booking refunds for details');
     logger.info(`[hotel] manual refund Rs ${split.amount} on ${booking.bookingRef} by admin ${adminId}`);
     return out;
@@ -1029,10 +1185,17 @@ export const bookingJSON = (doc, view, { reviewId = null, summary = false, now =
     if (doc.review || reviewId) b.reviewId = doc.review || reviewId;
     delete b.review;
     if (view === 'user') {
+        delete b.partnerId;
         b.pricing = customerPricing(doc.pricing);
         b.statusHistory = (doc.statusHistory || []).map((h) => ({ status: h.status, at: h.at, by: { role: h.by?.role }, ...(h.note ? { note: h.note } : {}) }));
         b.canCancel = userCanCancel(doc, now);
         b.canReview = doc.status === 'checked_out' && !b.reviewId;
+    }
+    if (view === 'partner') {
+        // The hotel needs the guest's name and contact (guestDetails), not the
+        // customer's platform account id or who-did-what account ids.
+        delete b.userId;
+        b.statusHistory = (doc.statusHistory || []).map((h) => ({ status: h.status, at: h.at, by: { role: h.by?.role }, ...(h.note ? { note: h.note } : {}) }));
     }
     if (summary) delete b.statusHistory;
     return b;

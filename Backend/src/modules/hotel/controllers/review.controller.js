@@ -14,6 +14,8 @@ import { HotelProperty } from '../models/hotelProperty.model.js';
 import { parse } from '../validators/partner.validators.js';
 import { isObjectId, pageOf, loadOwnProperty } from '../services/property.service.js';
 import { getMoneySettings } from '../services/moneySettings.js';
+import { isPublicImageUrl } from '../validators/property.validators.js';
+import { listableMatch } from '../services/search.service.js';
 
 const handle = (fn) => async (req, res, next) => {
     try {
@@ -96,7 +98,9 @@ const createSchema = z.object({
         value: stars.optional(),
     }).optional(),
     comment: z.string().trim().max(2000).optional(),
-    photos: z.array(z.string().trim().url().max(500)).max(10).optional(),
+    photos: z.array(z.string().trim().url().max(500)
+        .refine((u) => /^https?:\/\//i.test(u), 'photos must be http(s) links')
+        .refine(isPublicImageUrl, 'photos must be public photo links')).max(10).optional(),
 });
 
 export const createReview = handle(async (req, res) => {
@@ -138,7 +142,8 @@ export const publicReviews = handle(async (req, res) => {
     const q = parse(pagingSchema, req.query);
     const { page, limit, skip } = pageOf(q);
     if (!isObjectId(req.params.id)) throw new NotFoundError('Property not found');
-    const property = await HotelProperty.findOne({ _id: req.params.id, isDeleted: { $ne: true } }).select('_id').lean();
+    // Same rule as the property page: only listable (approved, live, partner approved).
+    const property = await HotelProperty.findOne({ ...(await listableMatch()), _id: req.params.id }).select('_id').lean();
     if (!property) throw new NotFoundError('Property not found');
 
     const filter = { propertyId: property._id, status: 'approved' };

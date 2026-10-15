@@ -70,12 +70,19 @@ export const isWeekendNight = (s) => {
  * Validate a stay window from query/body strings.
  * @returns {{ checkIn, checkOut, nights: string[] }}
  */
-export const parseStay = (checkIn, checkOut, { maxNights = 30, allowPast = false } = {}) => {
+export const MAX_ADVANCE_DAYS = 365;
+
+export const parseStay = (checkIn, checkOut, { maxNights = 30, allowPast = false, maxAdvanceDays = MAX_ADVANCE_DAYS } = {}) => {
     toNightDate(checkIn, 'checkIn');
     toNightDate(checkOut, 'checkOut');
     const n = daysBetween(checkIn, checkOut);
     if (n < 1) throw new ValidationError('checkOut must be after checkIn');
     if (n > maxNights) throw new ValidationError(`A stay can be at most ${maxNights} nights`);
     if (!allowPast && checkIn < todayIST()) throw new ValidationError('checkIn cannot be in the past');
+    // Inventory rows are kept a year ahead; a booking for 2099 would otherwise create
+    // rows (and take rooms) nobody manages.
+    if (maxAdvanceDays && daysBetween(todayIST(), checkIn) > maxAdvanceDays) {
+        throw new ValidationError(`checkIn can be at most ${maxAdvanceDays} days ahead`);
+    }
     return { checkIn, checkOut, nights: nightsBetween(checkIn, checkOut) };
 };

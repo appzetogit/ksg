@@ -73,6 +73,8 @@ hotelPartnerSchema.methods.toPartnerJSON = function toPartnerJSON() {
     const obj = this.toObject({ versionKey: false });
     delete obj.approvedBy;
     delete obj.isDeleted;
+    // Device push tokens are credentials for this account's devices; never echoed back.
+    delete obj.fcmTokens;
     if (obj.bank) delete obj.bank.razorpayFundAccountId;
     return obj;
 };

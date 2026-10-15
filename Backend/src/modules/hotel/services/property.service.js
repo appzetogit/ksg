@@ -117,6 +117,8 @@ export const publicPropertyJSON = (doc) => {
     delete obj.approvedAt;
     delete obj.rejectionReason;
     delete obj.zoneId;
+    // Internal account link; customers never need to know which partner owns it.
+    delete obj.partnerId;
     return obj;
 };
 

@@ -634,6 +634,13 @@ export const logout = async (refreshToken, fcmToken, platform) => {
           ),
         ),
       );
+      // Hotel partners keep device tokens per bucket (fcmTokens.web / fcmTokens.app);
+      // drop this device from both so a logged-out phone stops getting booking pushes.
+      const { HotelPartner } = await import("../../modules/hotel/models/hotelPartner.model.js");
+      await HotelPartner.updateMany(
+        { $or: [{ "fcmTokens.web": fcmToken }, { "fcmTokens.app": fcmToken }] },
+        { $pull: { "fcmTokens.web": fcmToken, "fcmTokens.app": fcmToken } },
+      );
       console.log("[FCM-Logout] Token removed from all collections successfully");
     } catch (err) {
       logger.warn({ err }, "Failed to remove FCM token from all collections during logout");

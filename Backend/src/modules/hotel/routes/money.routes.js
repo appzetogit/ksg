@@ -28,6 +28,8 @@ moneyRouter.get('/public/properties/:id/reviews', reviews.publicReviews);
 
 // Customer. The voucher authenticates itself (header or ?token=) so it can open in a tab.
 moneyRouter.get('/user/bookings/:id/voucher', extras.voucher);
+// A short-lived, single-booking link for the voucher tab (instead of ?token=<session>).
+moneyRouter.post('/user/bookings/:id/voucher-link', ...customer, extras.voucherLink);
 moneyRouter.post('/user/reviews', ...customer, reviews.createReview);
 moneyRouter.get('/user/saved', ...customer, extras.listSaved);
 moneyRouter.post('/user/saved/:propertyId', ...customer, extras.saveProperty);

@@ -1,5 +1,4 @@
 import { HOTEL_BASE, publicApi, userApi } from "../../shared/hotelApi";
-import { getUserToken } from "./session";
 
 /**
  * Booking calls for the customer app (docs/hotel-api-contract.md, "Phase 4–5").
@@ -208,10 +207,28 @@ export const getCancelPreview = (bookingId) => userApi.get(`/user/bookings/${enc
 export const cancelBooking = (bookingId, reason) =>
   userApi.post(`/user/bookings/${enc(bookingId)}/cancel`, { reason }).then((data) => data?.booking || null);
 
-/** Printable voucher; the token goes in the query so it opens in a plain new tab. */
-export const voucherUrl = (bookingId) => `${HOTEL_BASE}/user/bookings/${enc(bookingId)}/voucher?token=${enc(getUserToken())}`;
+/**
+ * Printable voucher in a plain new tab. A tab cannot send the Authorization header, so
+ * the server issues a short-lived link token for this one booking (`vt`); the session
+ * token itself never goes into a URL (browser history, proxies, logs).
+ */
+export const voucherUrl = (bookingId, linkToken) =>
+  `${HOTEL_BASE}/user/bookings/${enc(bookingId)}/voucher?vt=${enc(linkToken)}`;
 
-export const openVoucher = (bookingId) => window.open(voucherUrl(bookingId), "_blank", "noopener,noreferrer");
+export const openVoucher = async (bookingId) => {
+  // Open the tab inside the click (popup blockers), then point it at the link.
+  const tab = window.open("", "_blank");
+  if (tab) tab.opener = null;
+  try {
+    const data = await userApi.post(`/user/bookings/${enc(bookingId)}/voucher-link`, {});
+    const url = voucherUrl(bookingId, data?.token || "");
+    if (tab) tab.location.replace(url);
+    else window.open(url, "_blank", "noopener,noreferrer");
+  } catch (err) {
+    if (tab) tab.close();
+    window.alert(err?.message || "Could not open the voucher. Please try again.");
+  }
+};
 
 export const SUB_RATINGS = [
   { key: "cleanliness", label: "Cleanliness" },
