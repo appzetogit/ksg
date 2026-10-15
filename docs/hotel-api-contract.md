@@ -158,3 +158,62 @@ Dashboard (approved partner, phase-2 version): `GET /partner/dashboard` →
 | PUT | `/admin/properties/:id/live` | body `{ isLive }` (admin override) |
 
 Bookings, reviews and settings admin endpoints arrive with the booking phase.
+
+---
+
+## Deviations (backend, phases 2–3)
+
+Where the backend had to pick an interpretation. Frontends should follow this section
+over the tables above if they disagree.
+
+1. **Drafts are partial.** `POST /partner/properties` requires only `name` and
+   `propertyType`; `location` and `coverImage` may be missing on a draft (the wizard
+   saves right after the basics step). `/submit` then requires a location, `address.city`
+   and a cover image. A missing location is left unset, never stored as an empty Point.
+2. **Photo count at submit** = `(coverImage ? 1 : 0) + images.length >= 3`, where
+   `images` is the gallery without the cover (a copy of the cover in `images` is not
+   counted twice).
+3. **Submitting a property that is not `draft`/`rejected`** returns **409** (the
+   validation failures listed in the contract stay 400; all problems are listed in one
+   message).
+4. **Slug** is generated once from `name + city` at create (`-2`, `-3`… on clashes) and
+   stays stable when the name changes, so shared links keep working.
+5. **Room types:** `inventoryType` may be omitted when the property type allows exactly
+   one (hotel/resort → `room`, villa → `entire`, hostel/pg → `bed`); `entire` always
+   has `totalInventory: 1`. `originalPrice`/`weekendPrice` accept `null` to clear.
+   Lowering `totalInventory`/`bedsPerRoom` below what is already booked on any future
+   night → **409**. `PUT … {isActive:false}` behaves like DELETE (409 with upcoming
+   bookings). Changing an approved property's `propertyType` to one its active room
+   types cannot sell → 400.
+6. **Documents:** `PUT /documents` resets `verificationStatus` to `pending` (new files
+   need a fresh admin look). `isRequired` on each document is computed, not accepted.
+7. **Inventory calendar:** `from`/`to` on GET and PUT `/partner/inventory` are
+   **inclusive** nights (GET max 92 days, PUT max 366). `InventoryDay.available` is
+   `max(0, capacity − booked)` regardless of `closed` (the calendar shows `closed`
+   separately); the public availability endpoint treats a closed night as 0 available.
+   PUT returns `{ roomTypeId, updated, days? }` (`days` when the range ≤ 92 days).
+8. **Blocks:** `endDate` is the check-out date, **exclusive**. `startDate` cannot be in
+   the past; at most 366 nights. GET `/inventory/blocks` returns a plain array of
+   `{ _id, propertyId, roomTypeId, roomTypeName, source, startDate, endDate, units,
+   externalPlatform?, externalReference?, notes?, createdBy, createdAt }` with dates as
+   `YYYY-MM-DD`; `from`/`to` (inclusive) select blocks overlapping that range; without
+   `propertyId` all the partner's properties are listed. Platform-booking rows are not
+   listed and cannot be deleted here.
+9. **Search:** `PropertyCard.startingPrice` is the cheapest room type that fits the
+   party (and, with dates, is free every night) — so it can be higher than
+   `Property.startingPrice`. A room type fits when `rooms × maxAdults ≥ adults`,
+   `rooms × maxChildren ≥ children` and it has at least `rooms` units. `suitability`
+   `couple_friendly`/`family_friendly` also match `both`. `sort=relevance` is distance
+   with `lat/lng`, else rating then newest; `sort=distance` without `lat/lng` falls back
+   to rating. `distanceKm` has 2 decimals. Stays are limited to 30 nights and cannot
+   start in the past (400). `city` is a case-insensitive exact match; `q` a
+   case-insensitive substring of name/city/area.
+10. **Availability** uses the same 30-night / not-in-the-past rules; nights with no
+    inventory row count as full capacity at the base price.
+11. **Admin:** `PUT /admin/properties/:id/status` to `rejected`/`suspended` also switches
+    `isLive` off (the partner switches it back on after re-approval). Admin `live: true`
+    requires the property to be `approved` (400 otherwise). The admin partner JSON omits
+    `fcmTokens` and the Razorpay fund-account id. Admin property detail lists all room
+    types including inactive ones.
+12. **Dates storage:** nights are stored as `Date` at 00:00 IST (18:30 UTC the previous
+    day); see `Backend/src/modules/hotel/services/dates.js`.
