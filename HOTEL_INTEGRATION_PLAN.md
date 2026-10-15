@@ -591,6 +591,7 @@ Deviations; tests: `Backend/tests/hotel.pricing.test.mjs`, `hotel.booking.smoke.
   engine); settings not in the registry; gateway refunds create the core `Refund` row via
   `initiateRefund` but call Razorpay through the hotel adapter (the core
   `processGatewayRefund` marks the whole payment refunded on a partial refund).
+
 **Phase 5 backend, as built** (API + deviations: `docs/hotel-api-contract.md`, "Deviations
 (backend, phase 5)"; tests: `Backend/tests/hotel.money.smoke.mjs`):
 - Settlement and notifications are listeners on `services/bookingEvents.js`
@@ -598,10 +599,11 @@ Deviations; tests: `Backend/tests/hotel.pricing.test.mjs`, `hotel.booking.smoke.
 - Withdrawals use `HotelWithdrawal` (`hotel_withdrawals`) with a ledger hold, not
   `core/payments/settlement.service.js` (restaurant/rider only).
 - Voucher is printable HTML, not a pdfkit PDF (no new dependency).
-- Only the 30-min reminder job is scheduled here; the payment-expiry warning, no-show
-  sweep and monthly summary email are not built yet. No Redis lock: each send is claimed
-  by a conditional flag write instead.
-- Settings: `services/moneySettings.js` reads `services/settings.service.js` (phase 4).
+- Only the 30-min reminder job is scheduled here (next to the expiry interval); the
+  payment-expiry warning, no-show sweep and monthly summary email are not built yet. No
+  Redis lock: each send is claimed by a conditional flag write instead.
+- Settings (minWithdrawal, settleOn, reviewAutoApprove) come from
+  `services/settings.service.js` `getHotelSettings()` via `services/moneySettings.js`.
 
 ≈ 6–8 weeks for one developer; backend phases 1–5 and frontend 6–8 can run in parallel
 with two people once phase 1 lands.

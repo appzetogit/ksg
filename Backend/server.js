@@ -397,12 +397,23 @@ const startServer = async () => {
                     hotelExpiryInterval.unref?.();
                 })
                 .catch((err) => logger.error(`Hotel booking expiry failed to start: ${err.message}`));
-            // Hotel check-in reminders and review requests (each booking is claimed by a
-            // conditional flag write, so a second instance cannot send twice).
-            import('./src/modules/hotel/services/notifications.listener.js')
-                .then(({ runHotelReminders }) => {
-                    const tick = () => runHotelReminders()
-                        .catch((err) => logger.error(`Hotel reminders failed: ${err.message}`));
+
+            // Hotel check-in reminders and review requests, every 30 min (each booking is
+            // claimed by a conditional flag write, so a second instance cannot send twice).
+            Promise.all([
+                import('./src/modules/hotel/services/notifications.listener.js'),
+                import('./src/core/modules/moduleState.service.js'),
+                import('./src/core/modules/moduleRegistry.js'),
+            ])
+                .then(([{ runHotelReminders }, { isModuleEnabled }, { MODULES }]) => {
+                    const tick = async () => {
+                        try {
+                            if (!(await isModuleEnabled(MODULES.HOTEL))) return;
+                            await runHotelReminders();
+                        } catch (err) {
+                            logger.error(`Hotel reminders failed: ${err.message}`);
+                        }
+                    };
                     hotelRemindersInterval = setInterval(tick, 30 * 60 * 1000);
                     hotelRemindersInterval.unref?.();
                 })

@@ -36,6 +36,7 @@ import * as partnerInv from '../controllers/partnerInventory.controller.js';
 import * as admin from '../controllers/admin.controller.js';
 // Phase 4 (bookings + payments)
 import { userBookingRouter, partnerBookingRouter, adminBookingRouter } from './booking.routes.js';
+// Phase 5 (money, reviews, saved, voucher)
 import { moneyRouter, moneyAdminRouter } from './money.routes.js';
 
 const router = express.Router();

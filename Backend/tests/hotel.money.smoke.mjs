@@ -257,6 +257,20 @@ await check('wallet-paid with no payment event: the mode decides (full EARNING)'
     assert.equal(rows[0].actor.kind, 'admin');
 });
 
+const B4b = await makeBooking({
+    mode: 'partial_prepaid', amountPaid: TOTAL, payStatus: 'paid',
+    extra: {},
+});
+await M.HotelBooking.updateOne({ _id: B4b._id }, { $set: { 'payment.walletAmount': 200, 'payment.onlinePaid': 500, 'payment.collectedAtHotel': 1423.6 } });
+await check('booking-service fields decide the prepaid part (wallet 200 + online 500), not amountPaid', async () => {
+    transition(B4b, 'checked_in', 'checked_out');
+    const rows = await waitFor(async () => { const r = await partnerRows(B4b._id); return r.length >= 2 ? r : null; });
+    assert.ok(rows);
+    const by = Object.fromEntries(rows.map((e) => [e.type, e.amount]));
+    assert.equal(by.EARNING, 676.4);
+    assert.equal(by.COMMISSION, -236);
+});
+
 const B5 = await makeBooking({ mode: 'online' });
 await check('cancelled after settlement (full refund): every settle row reversed, partner nets 0', async () => {
     bookingEvents.emit('payment', { booking: B5.toObject(), amount: TOTAL, kind: 'online', paymentId: 'pay_B5' });
@@ -300,7 +314,7 @@ await check('cancelled before settlement with a 50% refund: the retained half se
     assert.equal((await partnerRows(B6._id)).length, 2, 'the late refund event does not settle again');
 });
 
-const EXPECTED_BALANCE = r2(1864 - 259.6 + 440.4 + 1864 + 0 + 932);
+const EXPECTED_BALANCE = r2(1864 - 259.6 + 440.4 + 1864 + 440.4 + 0 + 932);
 await check(`partner balance = ${EXPECTED_BALANCE} and the snapshot agrees with the ledger`, async () => {
     assert.equal(await balanceOf(P), EXPECTED_BALANCE);
     const rec = await reconcileOwner('partner', String(P._id));
@@ -574,8 +588,8 @@ await check('runHotelReminders: check-in reminder ~5h before, review request aft
     const now = new Date(night(today).getTime() + 13 * 3600 * 1000); // 13:00 IST today
     const first = await notif.runHotelReminders(now);
     assert.equal(first.checkInReminders, 1, JSON.stringify(first));
-    // checked_out without a review: B2, B3 (B1 and B4 were reviewed).
-    assert.equal(first.reviewRequests, 2, JSON.stringify(first));
+    // checked_out without a review: B2, B3, B4b (B1 and B4 were reviewed).
+    assert.equal(first.reviewRequests, 3, JSON.stringify(first)); // B2, B3, B4b
     assert.equal((await M.HotelBooking.findById(b10._id).lean()).notificationsSent.checkInReminder, true);
     assert.equal((await M.HotelBooking.findById(B2._id).lean()).notificationsSent.reviewRequest, true);
     assert.equal((await M.HotelBooking.findById(B1._id).lean()).notificationsSent.reviewRequest, false);

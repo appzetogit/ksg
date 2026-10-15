@@ -482,7 +482,10 @@ over the tables above if they disagree.
 12. **My orders / Master orders**: hotel rows use service/tab `hotel` (label "Stays"),
     route `/hotel/bookings/:id`; unpaid holds (`awaiting_payment` in My orders, `expired` in
     both) are hidden. Master > Orders refuses to delete a hotel booking.
-13. **Settings**: `services/moneySettings.js` reads `settings.service.js`
-    (`getHotelSettings`/`getSettings`) when present, else the contract defaults
-    (`minWithdrawal 500`, `settleOn checked_out`, `reviewAutoApprove true`, commission 10% /
-    min 50 / GST 18%).
+13. **Settings**: `minWithdrawal`, `settleOn` and `reviewAutoApprove` are read through
+    `services/moneySettings.js` from `settings.service.js` `getHotelSettings()` (contract
+    defaults only if that read fails).
+14. **With the phase-4 booking service**: the reminder job and the settlement read the
+    same `hotel_bookings` fields the booking service writes; the `payment` event with
+    `kind: 'at_hotel'` (mark-paid) is recorded but never counts as prepaid, and each `refund`
+    event (one per actual refund) is keyed by its `refundId`.
