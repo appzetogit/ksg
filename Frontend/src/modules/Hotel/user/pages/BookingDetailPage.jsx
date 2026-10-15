@@ -83,7 +83,7 @@ export default function BookingDetailPage() {
   const [flash, setFlash] = useState("");
   // Stable so the dialog doesn't re-run its focus effect on every parent render.
   const closeDialog = useCallback(() => setDialog(""), []);
-  useTitle(res.data?.bookingRef ? `Booking ${res.data.bookingRef}` : "Booking");
+  useTitle(res.data?.bookingRef ? `Booking ${res.data.bookingRef}` : "Booking", { noindex: true });
 
   if (!token) {
     return (

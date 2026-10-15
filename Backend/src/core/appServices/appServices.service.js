@@ -8,6 +8,7 @@ import { logger } from '../../utils/logger.js';
 import { AppServicesState } from './appServices.model.js';
 import {
     APP_SERVICES,
+    hasZones,
     isAppService,
     normalizeAppServicesState,
     resolveAppServices,
@@ -153,7 +154,10 @@ export async function resolveAppServicesAt({ lat, lng } = {}) {
 
     let zonesByService = {};
     if (latitude !== null && longitude !== null) {
-        const found = await Promise.all(APP_SERVICES.map(async ({ key }) => {
+        // A service without a zone map (hotel) stays undefined: inZone null,
+        // only its platform-wide switch applies.
+        const zoned = APP_SERVICES.filter(({ key }) => hasZones(key));
+        const found = await Promise.all(zoned.map(async ({ key }) => {
             try {
                 return [key, await zoneAt(key, latitude, longitude)];
             } catch (err) {
@@ -234,7 +238,8 @@ export async function getAdminView() {
     const services = await Promise.all(APP_SERVICES.map(async ({ key, label }) => {
         let zones = [];
         let zonesError = null;
-        try {
+        const zoned = hasZones(key);
+        if (zoned) try {
             const source = await ZONE_SOURCES[key]();
             zones = (await source.list()).map((z) => {
                 const rule = state.zoneRules.find((r) => r.service === key && r.zoneId === String(z._id));
@@ -260,6 +265,7 @@ export async function getAdminView() {
             enabled: state.services[key].enabled,
             updatedBy: storedServices[key]?.updatedBy || null,
             updatedAt: storedServices[key]?.updatedAt || null,
+            hasZones: zoned,
             zones,
             zonesError,
         };
@@ -301,6 +307,9 @@ export async function setServiceEnabled(service, enabled, { actorId = '' } = {})
 export async function setZoneEnabled(service, zoneId, enabled, { actorId = '' } = {}) {
     assertService(service);
     assertBoolean(enabled);
+    if (!hasZones(service)) {
+        throw httpError(400, `${service} has no zones; use its platform-wide switch.`);
+    }
 
     const id = String(zoneId || '');
     const source = await ZONE_SOURCES[service]();

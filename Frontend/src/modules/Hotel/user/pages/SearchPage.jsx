@@ -120,7 +120,9 @@ export default function SearchPage() {
   const state = useMemo(() => readSearch(params), [params]);
   const hasGeo = state.lat !== undefined;
   const where = destinationLabel(state);
-  useTitle(`Stays in ${where}`);
+  useTitle(`Stays in ${where}`, {
+    description: `Hotels, resorts and homestays in ${where}. Compare prices, ratings and amenities, and book on KSG Stays.`,
+  });
 
   const [editing, setEditing] = useState(false);
   const [sheet, setSheet] = useState(null); // 'filters' | 'sort' | null

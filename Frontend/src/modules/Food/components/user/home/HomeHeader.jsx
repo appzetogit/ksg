@@ -21,6 +21,7 @@ import vegChowmein from "@food/assets/menu-items/veg_chowmein_noodles_1771226095
 import rotiFlatbread from "@food/assets/menu-items/roti_flatbread_1771226034716.png";
 import steamedRice from "@food/assets/menu-items/steamed_rice_1771226079364.png";
 import useNotificationInbox from "@food/hooks/useNotificationInbox";
+import { HOTEL_ENABLED } from "@/config/features";
 
 const ICON_MAP = {
   CheckCircle2,
@@ -223,6 +224,22 @@ export default function HomeHeader({
               <img src={taxiIcon} alt="Rides" className="w-5 h-5 object-contain -ml-0.5" />
               <span className="font-extrabold text-[11px] tracking-wide">Rides</span>
             </button>
+            {HOTEL_ENABLED && (
+              // Third tab: on the narrowest phones only its icon shows, so the bar still fits.
+              <button
+                onClick={() => navigate('/hotel')}
+                aria-label="Hotels"
+                title="Hotels"
+                className={`flex items-center gap-1.5 px-2.5 min-[420px]:px-3 py-1.5 rounded-xl transition-all duration-300 ${
+                  routeLocation.pathname.startsWith('/hotel')
+                    ? 'bg-white shadow-sm text-[#FF7A00]'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <img src={hotelIcon} alt="" className="w-4 h-4 object-contain" />
+                <span className="hidden min-[420px]:inline font-extrabold text-[11px] tracking-wide">Hotels</span>
+              </button>
+            )}
           </div>
 
           {/* Right: Notifications & Profile/Veg */}

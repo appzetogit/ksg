@@ -235,7 +235,14 @@ export default function PropertyPage() {
   const avail = useAsync(() => getAvailability(property._id, stay), property ? `${property._id}?${stayKey}` : "none", {
     enabled: Boolean(property?._id),
   });
-  useTitle(property?.name || "Stay");
+  const seoCity = property?.address?.city;
+  useTitle(property?.name ? `${property.name}${seoCity ? `, ${seoCity}` : ""}` : "Stay", {
+    description: property
+      ? property.shortDescription ||
+        `${property.name}${seoCity ? ` in ${seoCity}` : ""}: rooms, photos, amenities and live prices on KSG Stays.`
+      : undefined,
+    image: property?.coverImage,
+  });
 
   // Keep stay + selection in the URL (replace: no history spam, back button still leaves the page).
   const writeParams = useCallback(

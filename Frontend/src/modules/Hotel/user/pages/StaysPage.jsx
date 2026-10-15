@@ -76,7 +76,7 @@ function ListSkeleton() {
 }
 
 export default function StaysPage() {
-  useTitle("My stays");
+  useTitle("My stays", { noindex: true });
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const token = getUserToken();

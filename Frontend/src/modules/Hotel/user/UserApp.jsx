@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect } from "react";
-import { Link, Route, Routes, useLocation } from "react-router-dom";
+import { Link, Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import { MotionConfig } from "framer-motion";
 import { Compass } from "lucide-react";
 import { HotelFooter, HotelHeader } from "./components/HotelChrome";
@@ -15,6 +15,7 @@ import { BTN, StateMessage } from "./components/ui";
 //   /hotel/stays            my stays (tabs: upcoming / ongoing / past / cancelled)
 //   /hotel/stays/:id        booking detail: voucher, pay, cancel, review
 //   /hotel/saved            saved properties
+//   /hotel/bookings/:id     redirect to /hotel/stays/:id (backend notification / My orders links)
 const HomePage = lazy(() => import("./pages/HomePage"));
 const SearchPage = lazy(() => import("./pages/SearchPage"));
 const PropertyPage = lazy(() => import("./pages/PropertyPage"));
@@ -37,6 +38,11 @@ const PageFallback = () => (
     <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#FF7A00] border-t-transparent" />
   </div>
 );
+
+function BookingLinkRedirect() {
+  const { id } = useParams();
+  return <Navigate to={`/hotel/stays/${encodeURIComponent(id)}`} replace />;
+}
 
 function NotFound() {
   return (
@@ -65,6 +71,8 @@ export default function UserApp() {
               <Route path="stays" element={<StaysPage />} />
               <Route path="stays/:id" element={<BookingDetailPage />} />
               <Route path="saved" element={<SavedPage />} />
+              {/* Notification links and platform "My orders" rows point at /hotel/bookings/:id */}
+              <Route path="bookings/:id" element={<BookingLinkRedirect />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

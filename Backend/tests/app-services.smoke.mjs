@@ -79,9 +79,9 @@ const at = async (point) => {
 
 console.log('\nnothing hidden until someone hides it');
 
-await check('a fresh platform shows all four services', async () => {
+await check('a fresh platform shows all five services', async () => {
     const s = await at(INDORE);
-    assert.deepEqual(Object.keys(s).sort(), ['food', 'medical', 'quick', 'taxi']);
+    assert.deepEqual(Object.keys(s).sort(), ['food', 'hotel', 'medical', 'quick', 'taxi']);
     for (const key of Object.keys(s)) assert.equal(s[key].visible, true, `${key} hidden`);
 });
 
@@ -97,7 +97,8 @@ await check('outside every zone is not a reason to hide a tile', async () => {
     const s = await at(NOWHERE);
     for (const key of Object.keys(s)) {
         assert.equal(s[key].visible, true, key);
-        assert.equal(s[key].inZone, false, key);
+        // hotel has no zone map: inZone is null (unknown), never false
+        assert.equal(s[key].inZone, key === 'hotel' ? null : false, key);
     }
 });
 
@@ -190,6 +191,25 @@ await check('the rule alone: a stored rule for a service not in the list is igno
     assert.equal(state.zoneRules.length, 0);
 });
 
+console.log('\nhotel (no zone map)');
+
+await check('hotel: platform switch only, no zones, zone switches refused', async () => {
+    assert.equal((await at(INDORE)).hotel.visible, true);
+    assert.equal((await at(INDORE)).hotel.zone, null);
+    await svc.setServiceEnabled('hotel', false, { actorId: 'admin1' });
+    assert.equal((await at(INDORE)).hotel.reason, 'disabled');
+    assert.equal((await at(null)).hotel.visible, false);
+    const view = await svc.getAdminView();
+    const hotel = view.services.find((s) => s.key === 'hotel');
+    assert.equal(hotel.hasZones, false);
+    assert.deepEqual(hotel.zones, []);
+    assert.equal(hotel.enabled, false);
+    assert.equal(view.services.find((s) => s.key === 'food').hasZones, true);
+    await assert.rejects(() => svc.setZoneEnabled('hotel', String(foodIndore._id), false), /has no zones/);
+    await svc.setServiceEnabled('hotel', true);
+    assert.equal((await at(INDORE)).hotel.visible, true);
+});
+
 console.log('\nover HTTP');
 
 const app = express();
@@ -204,7 +224,7 @@ await check('the app reads without signing in', async () => {
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.data.located, true);
-    assert.equal(body.data.services.length, 4);
+    assert.equal(body.data.services.length, 5);
 });
 
 await check('the admin view needs a token', async () => {
