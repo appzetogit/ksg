@@ -36,6 +36,7 @@ import * as partnerInv from '../controllers/partnerInventory.controller.js';
 import * as admin from '../controllers/admin.controller.js';
 // Phase 4 (bookings + payments)
 import { userBookingRouter, partnerBookingRouter, adminBookingRouter } from './booking.routes.js';
+import { moneyRouter, moneyAdminRouter } from './money.routes.js';
 
 const router = express.Router();
 
@@ -46,6 +47,10 @@ router.get('/public/cities', citiesController);
 router.get('/public/properties', searchController);
 router.get('/public/properties/:id/availability', availabilityController);
 router.get('/public/properties/:idOrSlug', propertyDetailController);
+
+// ─── Phase 5: money, reviews, saved, voucher (routes/money.routes.js) ──────
+// Per-route guards; must stay ahead of the /user and /partner routers (voucher ?token=).
+router.use(moneyRouter);
 
 // ─── Partner ───────────────────────────────────────────────────────────────
 router.post('/partner/auth/request-otp', authRateLimiter, requestOtpController);
@@ -92,6 +97,7 @@ adminRouter.put('/properties/:id/status', admin.setPropertyStatus);
 adminRouter.put('/properties/:id/documents/verify', admin.verifyDocuments);
 adminRouter.put('/properties/:id/live', admin.setPropertyLive);
 adminRouter.use(adminBookingRouter); // phase 4: /admin/bookings/*, /admin/settings
+adminRouter.use(moneyAdminRouter); // phase 5: reviews + withdrawals (routes/money.routes.js)
 router.use('/admin', adminRouter);
 
 // ─── Customer (phase 4 bookings) ───────────────────────────────────────────

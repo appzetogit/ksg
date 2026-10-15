@@ -11,6 +11,7 @@ import { decideAdminAccess } from '../admin/adminAccessPolicy.js';
  *   Quick & Medical   per store; a pharmacy with no rate pays the Medical default
  *   Taxi              per vehicle type and city, on each fare row
  *   Services          the vendor's payout share; the platform keeps the rest
+ *   Hotels            one platform-wide percentage from the hotel settings
  *
  * The rate shown for a seller is the one its next order would be charged:
  * each service's own rate function (getRestaurantCommissionSnapshot) is asked
@@ -30,6 +31,7 @@ const SERVICES = {
   quick: { label: 'Quick & Medical', service: 'quickCommerce', resource: 'restaurants', editPath: '/admin/quick-commerce/restaurants/commission' },
   taxi: { label: 'Taxi', service: 'taxi', resource: 'fee_settings', editPath: '/taxi/admin/pricing/set-price' },
   services: { label: 'Services', service: 'serviceProvider', resource: 'settings', editPath: '/admin/sp/settings' },
+  hotel: { label: 'Hotels', service: 'hotel', resource: 'settings', editPath: '/admin/hotel/settings' },
 };
 
 const round = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -164,7 +166,52 @@ async function servicesOverview() {
   };
 }
 
-const LOADERS = { food: foodOverview, quick: quickOverview, taxi: taxiOverview, services: servicesOverview };
+/**
+ * Hotels: one platform-wide rate (hotel settings: commissionPercent, with a minimum per
+ * booking and GST on top), charged on the room tariff before GST. Per partner, what
+ * completed stays actually paid over the window.
+ */
+async function hotelOverview(since) {
+  const { getMoneySettings } = await import('../../modules/hotel/services/moneySettings.js');
+  const settings = await getMoneySettings();
+  const [partners, paid] = await Promise.all([
+    coll('hotel_partners').find({ isDeleted: { $ne: true } }).project({ name: 1, status: 1 }).toArray(),
+    coll('hotel_bookings')
+      .aggregate([
+        { $match: { status: 'checked_out', checkOut: { $gte: since } } },
+        {
+          $group: {
+            _id: '$partnerId',
+            orders: { $sum: 1 },
+            commission: { $sum: { $ifNull: ['$pricing.commissionAmount', 0] } },
+            base: { $sum: { $ifNull: ['$pricing.taxableAmount', 0] } },
+          },
+        },
+      ])
+      .toArray(),
+  ]);
+  const byPartner = new Map(paid.map((r) => [String(r._id), r]));
+  const value = round(settings.commissionPercent);
+  return {
+    rate: { type: 'percentage', value, minCommission: round(settings.minCommission), gstPercent: round(settings.commissionGstPercent) },
+    rows: partners.map((p) => {
+      const got = byPartner.get(String(p._id));
+      return {
+        id: String(p._id),
+        name: p.name || 'Unnamed',
+        status: p.status || '',
+        rate: { type: 'percentage', value },
+        source: value > 0 ? 'hotel_default' : 'none',
+        label: '',
+        last30: got
+          ? { orders: got.orders, commission: round(got.commission), effectivePct: got.base > 0 ? round((got.commission / got.base) * 100) : null }
+          : { orders: 0, commission: 0, effectivePct: null },
+      };
+    }),
+  };
+}
+
+const LOADERS = { food: foodOverview, quick: quickOverview, taxi: taxiOverview, services: servicesOverview, hotel: hotelOverview };
 
 /** How many sellers pay nothing because no rate is set -- the misconfiguration to look for. */
 function summarise(rows = []) {

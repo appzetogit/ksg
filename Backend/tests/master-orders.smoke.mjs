@@ -47,7 +47,7 @@ await check('All: every order, newest first, with counts per service', async () 
   const r = await listMasterOrders({ tab: 'all' });
   assert.deepEqual(r.orders.map((o) => o.orderId).slice(0, 4), ['FOD-1', 'MED-1', 'QC-1', r.orders[3].orderId]);
   assert.equal(r.total, 6);
-  assert.deepEqual(r.counts, { food: 2, quick: 1, medical: 1, taxi: 1, parcel: 1 });
+  assert.deepEqual(r.counts, { food: 2, quick: 1, medical: 1, taxi: 1, parcel: 1, hotel: 0 });
 });
 
 await check('each tab shows only its service', async () => {

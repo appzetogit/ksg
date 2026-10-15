@@ -424,3 +424,65 @@ over the tables above if they disagree.
     `payments` collection (it is the gateway-payment aggregate).
 15. **Expiry job** `expireStaleBookings()` runs every 60 s from `server.js`
     `startIntervals()` when `BACKGROUND_JOBS_ENABLED` and the hotel module are on.
+
+## Deviations (backend, phase 5: money, reviews, notifications)
+
+1. **Settlement** (`services/settlement.listener.js`, a listener on `bookingEvents`) writes
+   core-ledger rows (`vertical: 'hotel'`, `jobType: 'hotel_booking'`, `jobId` = booking id,
+   key kind `hotel_booking`). With `partnerGross = taxableAmount + gstAmount`,
+   `commission = commissionAmount + commissionGst`, `fee = platformFee + platformFeeGst` and
+   `P` = what the platform collected (online + wallet, less refunds): partner
+   `EARNING +(P − fee)` (or `PLATFORM_FEE` if negative) and `COMMISSION −commission`;
+   platform `COMMISSION +commission`, `PLATFORM_FEE +fee`. So pay-at-hotel = commission
+   (+ any booking fee) debit only. Settles on the first transition at/after `settleOn`
+   (confirmed < checked_in < checked_out). The booking service must fill
+   `pricing.commissionAmount`/`commissionGst`; `partnerPayout` is not read.
+2. **Prepaid amount** is learnt from `payment` / `refund` events, stored as zero-amount
+   `NON_WALLET` marker rows on the platform owner. Without a payment marker: `online`/`wallet`
+   = total (when paid), `partial_prepaid` = `payment.amountPaid`, `pay_at_hotel` = 0.
+3. **Cancellation / no-show**: if settled, every settle row is reversed exactly
+   (EARNING by `REFUND`, the rest by `ADJUSTMENT`). Then the money the platform keeps
+   (`P − max(refund markers, cancellation.refundAmount)`) settles pro rata
+   (`ratio = retained / total`), so the hotel gets its share of a late-cancel fee or a
+   prepaid no-show. A refund on a booking that stays settled reverses the same pro-rata share.
+4. **Withdrawals** use a new `HotelWithdrawal` (`hotel_withdrawals`; core
+   `settlement.service` only supports restaurants/riders). Request: `amount ≥ minWithdrawal`
+   (400); partner bank needs `ifsc` and (`accountNumberMasked` or `accountHolder`) (400);
+   `amount ≤ balance` (409). The amount is held at once by a ledger `WITHDRAWAL −amount`
+   entry; reject releases it (`WITHDRAWAL +amount`). Status: pending → approved | rejected |
+   paid; approved → paid | rejected; anything else 409. Items (partner and admin lists):
+   `{ _id, amount, status, bank (masked snapshot), note?, utr?, processedAt?, createdAt,
+   updatedAt, partnerId, partner: { name, phone } }`.
+5. **Earnings**: `balance` = ledger balance (after held withdrawals); `withdrawable` =
+   `max(0, balance)`; `totalEarned` / `thisMonth` = sum of non-withdrawal ledger rows (IST
+   month); `pendingSettlement` = for confirmed/checked-in/checked-out bookings not yet
+   settled, `prepaid − fee − commission` (negative for pay-at-hotel).
+6. **Ledger** items' `description` is the entry reason; marker rows are not listed.
+7. **Reviews**: a booking that is not `checked_out` → **400**; someone else's booking → 404;
+   duplicate → 409. `photos` up to 10 URLs. Public items show the reviewer's first name
+   only, admin items the full name; partner and admin items carry `property: { _id, name }`.
+   `avgRating` is rounded to 1 decimal. `GET /public/properties/:id/reviews` takes an id
+   (not a slug); 404 for an unknown/deleted property.
+8. **Saved**: `GET /user/saved` returns a plain array of PropertyCards
+   (`startingPrice` = the property's stored starting price; no `available`/`distanceKm`).
+   `POST` is 404 unless the property is listable; `POST`/`DELETE` are idempotent.
+9. **Voucher** is HTML (not PDF; no new dependency) with a "Print / Save as PDF" button;
+   auth errors are JSON 401/403, someone else's booking 404.
+10. **Dashboard**: `revenueThisMonth` = Σ (taxableAmount + gstAmount) of confirmed /
+    checked-in / checked-out bookings whose check-in is in this IST month;
+    `occupancyThisMonth` = Σ booked ÷ Σ capacity of this month's `hotel_inventory_days`
+    rows (blocks count as booked), 4 decimals; `todayDepartures` counts checked-in and
+    checked-out stays leaving today; `recentBookings` excludes `awaiting_payment`/`expired`.
+11. **Notifications**: guest inbox rows use `vertical: 'hotel'`, `source: 'BOOKING'`,
+    `data.link = /hotel/bookings/:id`; partner pushes go to `HotelPartner.fcmTokens`
+    (web + app). The confirmation email is sent only when SMTP is configured.
+    `runHotelReminders` (every 30 min when `BACKGROUND_JOBS_ENABLED`): check-in reminder from
+    5 h before `checkInTime` until check-in; review request for checked-out stays without a
+    review, within 14 days.
+12. **My orders / Master orders**: hotel rows use service/tab `hotel` (label "Stays"),
+    route `/hotel/bookings/:id`; unpaid holds (`awaiting_payment` in My orders, `expired` in
+    both) are hidden. Master > Orders refuses to delete a hotel booking.
+13. **Settings**: `services/moneySettings.js` reads `settings.service.js`
+    (`getHotelSettings`/`getSettings`) when present, else the contract defaults
+    (`minWithdrawal 500`, `settleOn checked_out`, `reviewAutoApprove true`, commission 10% /
+    min 50 / GST 18%).

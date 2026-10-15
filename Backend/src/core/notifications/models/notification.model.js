@@ -10,7 +10,7 @@ const notificationSchema = new mongoose.Schema(
          */
         vertical: {
             type: String,
-            enum: ['food', 'quickCommerce', 'taxi', 'serviceProvider'],
+            enum: ['food', 'quickCommerce', 'taxi', 'serviceProvider', 'hotel'],
             default: 'food',
             index: true
         },
@@ -105,7 +105,7 @@ notificationSchema.index(
     { unique: true, partialFilterExpression: { broadcastId: { $type: 'objectId' } } }
 );
 
-export const NOTIFICATION_VERTICALS = Object.freeze(['food', 'quickCommerce', 'taxi', 'serviceProvider']);
+export const NOTIFICATION_VERTICALS = Object.freeze(['food', 'quickCommerce', 'taxi', 'serviceProvider', 'hotel']);
 
 export { notificationSchema };
 

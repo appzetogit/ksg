@@ -210,6 +210,24 @@ export const attachAllActivityHooks = async () => {
         attached.push('serviceProvider');
     } catch (err) { logger.warn(`[Activity] service-provider hooks skipped: ${err.message}`); }
 
+    // ── hotel ───────────────────────────────────────────────────────────────
+    // userId on a hotel booking is already the platform account (`users`).
+    try {
+        const { HotelBooking } = await import('../../modules/hotel/models/hotelBooking.model.js');
+        attachActivityHooks(HotelBooking, {
+            vertical: 'hotel',
+            refModel: 'HotelBooking',
+            map: (d) => ({
+                userId: d.userId,
+                rawStatus: d.status,
+                amount: d.pricing?.total ?? 0,
+                title: d.snapshot?.propertyName ? `Stay at ${d.snapshot.propertyName}` : 'Hotel booking',
+                occurredAt: d.updatedAt || d.createdAt,
+            }),
+        });
+        attached.push('hotel');
+    } catch (err) { logger.warn(`[Activity] hotel hooks skipped: ${err.message}`); }
+
     logger.info(`Activity feed hooks attached: ${attached.join(', ') || 'none'}`);
     return attached;
 };

@@ -47,6 +47,7 @@ export const KEY_KINDS = Object.freeze([
     'admin_adjustment',
     'subscription_charge',
     'source_row',
+    'hotel_booking',
 ]);
 
 const build = (kind, ...parts) => {
@@ -148,6 +149,14 @@ export const forSubscriptionCharge = (subscriptionId, periodKey) =>
  * both name a historical row the same way, so a row covered by both is written once.
  */
 export const forSourceRow = (collection, rowId) => build('source_row', collection, rowId);
+
+/**
+ * A hotel booking's money movement, keyed on the booking, the step and the side
+ * it pays (modules/hotel/services/settlement.listener.js). One booking settles,
+ * may reverse, and may settle a retained amount: each step is its own key, so a
+ * re-emitted event moves nothing twice.
+ */
+export const forHotelBooking = (bookingId, step, role) => build('hotel_booking', bookingId, step, role);
 
 /** Which kind produced a key, for reading a ledger row back. */
 export const kindOf = (key) => {

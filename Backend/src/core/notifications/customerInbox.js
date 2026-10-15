@@ -39,7 +39,7 @@ function sourceFor(vertical, data = {}) {
   const type = plain(data.type).toLowerCase();
   if (type.includes('payment') || type.includes('refund') || type.includes('wallet')) return 'PAYMENT';
   if (vertical === 'taxi') return 'RIDE';
-  if (vertical === 'serviceProvider') return 'BOOKING';
+  if (vertical === 'serviceProvider' || vertical === 'hotel') return 'BOOKING';
   if (data.orderId || data.orderMongoId || type.includes('order')) return 'ORDER';
   return 'SYSTEM';
 }
@@ -48,7 +48,7 @@ function sourceFor(vertical, data = {}) {
  * File one customer notification in the shared inbox.
  *
  * @param {object} n
- * @param {'food'|'quickCommerce'|'taxi'|'serviceProvider'} n.vertical  label when the id is a platform id
+ * @param {'food'|'quickCommerce'|'taxi'|'serviceProvider'|'hotel'} n.vertical  label when the id is a platform id
  * @param {string} n.userId   the service's own customer id (translated here)
  * @param {string} n.title
  * @param {string} n.message
