@@ -217,3 +217,123 @@ over the tables above if they disagree.
     types including inactive ones.
 12. **Dates storage:** nights are stored as `Date` at 00:00 IST (18:30 UTC the previous
     day); see `Backend/src/modules/hotel/services/dates.js`.
+
+---
+
+# Phase 4–5: bookings, payments, reviews, money
+
+Same conventions as above. New shared shapes:
+
+```ts
+Quote = {
+  propertyId, roomTypeId, checkIn, checkOut, nights, rooms, guests: { adults, children },
+  available: boolean,              // enough rooms every night and the party fits
+  paymentMode: 'pay_at_hotel'|'online'|'partial_prepaid',
+  pricing: { roomCharges, extraGuestCharges, subtotal, couponCode?, couponDiscount, prepaidDiscount,
+             taxableAmount, gstRate, gstAmount, platformFee, platformFeeGst, total },
+  payNow: number,                  // charged online now (0 for pay_at_hotel)
+  payAtHotel: number,              // collected by the hotel
+  walletApplicable: number,        // max wallet amount usable against payNow (0 if no wallet)
+  cancellationPolicy: { type, freeCancelHours, refundPercentAfter },
+  freeCancellationUntil?: ISODateTime,
+  holdMinutes: number              // how long an unpaid booking holds the rooms
+}
+
+Booking = {
+  _id, bookingRef, propertyId, roomTypeId, partnerId,
+  snapshot: { propertyName, propertyType, roomTypeName, address, coverImage, checkInTime, checkOutTime, cancellationPolicy },
+  checkIn: 'YYYY-MM-DD', checkOut: 'YYYY-MM-DD', nights, rooms, guests: { adults, children },
+  guestDetails: { name, phone, email? }, specialRequests?,
+  pricing: Quote.pricing & { commissionRate?, commissionAmount?, commissionGst?, partnerPayout? },  // commission/payout only in partner & admin views
+  payment: { mode, status, amountPaid, amountDue, walletAmount, expiresAt? },
+  status: 'awaiting_payment'|'confirmed'|'checked_in'|'checked_out'|'cancelled'|'no_show'|'expired',
+  statusHistory: [{ status, at, by: { role }, note? }],
+  cancellation?: { by, reason, at, refundAmount },
+  canCancel: boolean, canReview: boolean,     // user view
+  reviewId?, createdAt
+}
+
+BookingSummary = Booking minus statusHistory (lists)
+
+Review = { _id, propertyId, bookingId, rating, subRatings?, comment, photos, reply?: { text, at },
+           user: { name }, status, createdAt }
+```
+
+Payment modes: `pay_at_hotel` (nothing online), `online` (full total now), `partial_prepaid`
+(advance % now, rest at hotel; prepaid discount applies). The customer may also tick
+`useWallet` to pay part or all of `payNow` from the KSG wallet; if the wallet covers all of
+it, no Razorpay order is created. Gateway: Razorpay only.
+
+## Customer (`USER` token = `user_accessToken`)
+
+| Method | Path | Body / result |
+|---|---|---|
+| POST | `/user/bookings/quote` | `{ propertyId, roomTypeId, checkIn, checkOut, rooms, adults, children, paymentMode, couponCode? }` → `data: Quote` (no hold) |
+| POST | `/user/bookings` | quote body + `{ guestDetails: { name, phone, email? }, specialRequests?, useWallet?: boolean }` → `data: { booking, payment: null \| { razorpayOrderId, amount /* paise */, currency: 'INR', keyId, name, description, prefill: { name, contact, email } } }`. 409 if sold out. `confirmed` when nothing is payable online, else `awaiting_payment` with `payment.expiresAt`. |
+| POST | `/user/bookings/:id/verify-payment` | `{ razorpayOrderId, razorpayPaymentId, razorpaySignature }` → `data: { booking }` (idempotent) |
+| POST | `/user/bookings/:id/retry-payment` | → the same `payment` object for a still-held `awaiting_payment` booking |
+| GET | `/user/bookings?tab=upcoming\|ongoing\|past\|cancelled&page&limit` | page of BookingSummary |
+| GET | `/user/bookings/:id` | `data: { booking }` |
+| GET | `/user/bookings/:id/cancel-preview` | `data: { refundAmount, refundPercent, walletRefund, gatewayRefund, policyText, freeCancellationUntil? }` |
+| POST | `/user/bookings/:id/cancel` | `{ reason }` → `data: { booking }` |
+| GET | `/user/bookings/:id/voucher` | printable HTML voucher (`text/html`); also accepts `?token=` so it can open in a new tab |
+| POST | `/user/reviews` | `{ bookingId, rating, subRatings?, comment?, photos? }` → `data: { review }`; only after `checked_out`, once per booking |
+| GET | `/user/saved` | `data: PropertyCard[]` |
+| POST / DELETE | `/user/saved/:propertyId` | `data: { saved: boolean }` |
+| GET | `/public/properties/:id/reviews?page&limit` | page of Review (approved only) plus `data.summary: { avgRating, totalReviews, breakdown: { 5: n, ..., 1: n } }` |
+
+## Partner (approved `HOTEL_PARTNER`)
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/partner/bookings?status&propertyId&from&to&q&page&limit` | page of Booking (with commission/payout); `q` = ref or guest name/phone |
+| GET | `/partner/bookings/:id` | `data: { booking }` |
+| PUT | `/partner/bookings/:id/check-in` | confirmed → checked_in (on/after check-in date) |
+| PUT | `/partner/bookings/:id/check-out` | checked_in → checked_out; `{ force?: boolean }` if a balance is unpaid |
+| PUT | `/partner/bookings/:id/no-show` | confirmed → no_show (after the check-in day) |
+| PUT | `/partner/bookings/:id/mark-paid` | `{ amount }` records cash collected at the hotel |
+| PUT | `/partner/bookings/:id/cancel` | `{ reason }` partner cancel → full refund to the guest |
+| GET | `/partner/reviews?propertyId&page&limit` | page of Review (all statuses) |
+| POST | `/partner/reviews/:id/reply` | `{ text }` |
+| GET | `/partner/earnings` | `data: { balance, pendingSettlement, totalEarned, thisMonth, withdrawable, minWithdrawal }` |
+| GET | `/partner/ledger?page&limit` | page of `{ _id, type, amount, bookingRef?, description, createdAt, balanceAfter? }` |
+| POST | `/partner/withdrawals` | `{ amount }` → `data: { withdrawal: { _id, amount, status, createdAt } }` |
+| GET | `/partner/withdrawals?page` | page of withdrawals |
+| GET | `/partner/dashboard` | now real: `{ properties, todayArrivals, todayDepartures, upcomingBookings, revenueThisMonth, occupancyThisMonth /* 0..1 */, recentBookings: BookingSummary[] }` |
+
+## Admin (`hotel` access)
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/admin/bookings?status&propertyId&partnerId&q&from&to&page&limit` | page of Booking (+ `partner: {name, phone}`, `user: {name, phone}`) |
+| GET | `/admin/bookings/:id` | `data: { booking, partner, user, payments: [...], refunds: [...] }` |
+| PUT | `/admin/bookings/:id/status` | `{ status: 'checked_in'\|'checked_out'\|'no_show'\|'cancelled', reason?, force? }` (admin may override date rules) |
+| POST | `/admin/bookings/:id/refund` | `{ amount, reason }` manual refund (≤ amount paid − already refunded) |
+| GET | `/admin/reviews?status&propertyId&page&limit` | page of Review |
+| PUT | `/admin/reviews/:id/status` | `{ status: 'approved'\|'rejected' }` |
+| GET | `/admin/withdrawals?status&page&limit` | page (+ partner) |
+| PUT | `/admin/withdrawals/:id/status` | `{ status: 'approved'\|'rejected'\|'paid', note?, utr? }` |
+| GET | `/admin/settings` | `data: HotelSettings` |
+| PUT | `/admin/settings` | partial HotelSettings |
+
+```ts
+HotelSettings = {
+  commissionPercent: 10, minCommission: 50, commissionGstPercent: 18,
+  paymentHoldMinutes: 30, prepaidDiscountPercent: 5, prepaidAdvancePercent: 30,
+  allowPayAtHotel: true, reviewAutoApprove: true, minWithdrawal: 500,
+  settleOn: 'checked_out',
+  gstSlabs: [ { upTo: 1000, rate: 0 }, { upTo: 7500, rate: 5 }, { upTo: null, rate: 18 } ]  // per room per night tariff
+}
+```
+
+## Internal backend interface (between the booking and money workstreams)
+
+`Backend/src/modules/hotel/services/bookingEvents.js` exports a Node `EventEmitter` named
+`bookingEvents`. The booking service emits, **after the DB commit**:
+- `bookingEvents.emit('transition', { booking /* lean doc */, from, to, actor: { role, id } })`
+  for every status change, including creation (`from: null`);
+- `bookingEvents.emit('payment', { booking, amount, kind: 'online'|'wallet'|'at_hotel', paymentId? })`;
+- `bookingEvents.emit('refund', { booking, amount, walletAmount, gatewayAmount, refundId? })`.
+
+Listeners must be idempotent (key on booking id + status / payment id) and must never throw
+into the emitter (wrap in try/catch and log).
