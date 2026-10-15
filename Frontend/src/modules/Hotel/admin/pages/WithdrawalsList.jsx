@@ -18,6 +18,7 @@ import {
   StatusTabs,
   TableSkeleton,
 } from "../components/ui";
+import { useHotelAccess } from "../hotelAccess";
 
 const TABS = ["pending", "approved", "paid", "rejected", "all"];
 const LIMIT = 20;
@@ -59,6 +60,8 @@ const ACTIONS = {
 const NEXT = { pending: ["approved", "paid", "rejected"], approved: ["paid", "rejected"] };
 
 export default function WithdrawalsList() {
+  const { canWrite } = useHotelAccess();
+  const canPay = canWrite("hotel_withdrawals");
   const [params, update] = useListParams({ status: "pending", page: 1 });
   const [pending, setPending] = useState(null); // { item, status }
 
@@ -149,7 +152,7 @@ export default function WithdrawalsList() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap justify-end gap-2">
-                            {(NEXT[w.status] || []).map((s) => {
+                            {(canPay ? NEXT[w.status] || [] : []).map((s) => {
                               const a = ACTIONS[s];
                               return (
                                 <Button key={s} tone={a.tone} icon={a.icon} onClick={() => setPending({ item: w, status: s })}>

@@ -4,6 +4,7 @@ import { hotelAdmin } from "../api";
 import { useLoad } from "../useLoad";
 import { formatDate, fullAddress, label, masked } from "../format";
 import StatusActions from "../components/StatusActions";
+import { useHotelAccess } from "../hotelAccess";
 import { Card, DetailSkeleton, EmptyState, ErrorState, Fields, FileTile, LiveBadge, PageHeader, StatusBadge } from "../components/ui";
 
 const ACTIONS = [
@@ -55,6 +56,7 @@ export const BackLink = ({ to, children }) => (
 );
 
 export default function PartnerDetail() {
+  const { canWrite } = useHotelAccess();
   const { id } = useParams();
   const { data, loading, error, reload } = useLoad(() => hotelAdmin.partner(id), [id]);
   const partner = data?.partner;
@@ -93,7 +95,11 @@ export default function PartnerDetail() {
           </span>
         }
         subtitle={`Joined ${formatDate(partner.createdAt)} · ${partner.phone || "no phone"}`}
-        actions={<StatusActions current={partner.status} actions={ACTIONS} onChange={changeStatus} disabled={loading} />}
+        actions={
+          canWrite("hotel_partners") ? (
+            <StatusActions current={partner.status} actions={ACTIONS} onChange={changeStatus} disabled={loading} />
+          ) : null
+        }
       />
 
       {partner.rejectionReason && ["rejected", "blocked"].includes(partner.status) && (

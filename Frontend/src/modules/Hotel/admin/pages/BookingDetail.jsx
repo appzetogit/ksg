@@ -9,6 +9,7 @@ import { BackLink } from "./PartnerDetail";
 import { paymentSummary } from "./BookingsList";
 import FormDialog, { DialogField } from "../components/FormDialog";
 import { Button, Card, DetailSkeleton, ErrorState, Fields, PageHeader, StatusBadge, cx } from "../components/ui";
+import { useHotelAccess } from "../hotelAccess";
 
 /** Status changes an admin may make from each status (the server re-checks). */
 const NEXT = {
@@ -96,6 +97,8 @@ function MoneyTable({ rows, columns, empty }) {
 }
 
 export default function BookingDetail() {
+  const { canWrite } = useHotelAccess();
+  const canManage = canWrite("hotel_bookings");
   const { id } = useParams();
   const { data, loading, error, reload } = useLoad(() => hotelAdmin.booking(id), [id]);
   const [dialog, setDialog] = useState(null); // 'status' | 'refund'
@@ -192,20 +195,22 @@ export default function BookingDetail() {
             <Button icon={RefreshCw} onClick={reload} disabled={loading}>
               Refresh
             </Button>
-            {options.length > 0 && (
+            {canManage && options.length > 0 && (
               <Button tone="primary" icon={Shuffle} onClick={openStatus} disabled={loading}>
                 Change status
               </Button>
             )}
-            <Button
-              tone="warning"
-              icon={RotateCcw}
-              onClick={openRefund}
-              disabled={loading || refundable <= 0}
-              title={refundable <= 0 ? "Nothing left to refund" : undefined}
-            >
-              Refund
-            </Button>
+            {canManage && (
+              <Button
+                tone="warning"
+                icon={RotateCcw}
+                onClick={openRefund}
+                disabled={loading || refundable <= 0}
+                title={refundable <= 0 ? "Nothing left to refund" : undefined}
+              >
+                Refund
+              </Button>
+            )}
           </>
         }
       />

@@ -39,6 +39,8 @@ let spScheduler = null;
 let ledgerNightlyInterval = null;
 let hotelExpiryInterval = null;
 let hotelRemindersInterval = null;
+let hotelPaymentWarningInterval = null;
+let hotelHourlyJobsInterval = null;
 
 const gracefulShutdown = async (signal) => {
     logger.info(`${signal} received, starting graceful shutdown`);
@@ -58,6 +60,8 @@ const gracefulShutdown = async (signal) => {
             if (ledgerNightlyInterval) clearInterval(ledgerNightlyInterval);
             if (hotelExpiryInterval) clearInterval(hotelExpiryInterval);
             if (hotelRemindersInterval) clearInterval(hotelRemindersInterval);
+            if (hotelPaymentWarningInterval) clearInterval(hotelPaymentWarningInterval);
+            if (hotelHourlyJobsInterval) clearInterval(hotelHourlyJobsInterval);
             logger.info('Graceful shutdown complete');
             process.exit(0);
         } catch (err) {
@@ -418,6 +422,31 @@ const startServer = async () => {
                     hotelRemindersInterval.unref?.();
                 })
                 .catch((err) => logger.error(`Hotel reminders failed to start: ${err.message}`));
+
+            // Hotel jobs.service.js: payment-expiry warning (every 2 min, ~10 min before an
+            // unpaid hold lapses), and an hourly tick for the no-show prompt to partners
+            // (from 03:00 IST the day after check-in) and the monthly partner summary (1st-3rd,
+            // IST). Each send is claimed by a conditional write, so overlap is harmless.
+            Promise.all([
+                import('./src/modules/hotel/services/jobs.service.js'),
+                import('./src/core/modules/moduleState.service.js'),
+                import('./src/core/modules/moduleRegistry.js'),
+            ])
+                .then(([{ runPaymentExpiryWarnings, runHotelHourlyJobs }, { isModuleEnabled }, { MODULES }]) => {
+                    const gated = (name, job) => async () => {
+                        try {
+                            if (!(await isModuleEnabled(MODULES.HOTEL))) return;
+                            await job();
+                        } catch (err) {
+                            logger.error(`Hotel ${name} failed: ${err.message}`);
+                        }
+                    };
+                    hotelPaymentWarningInterval = setInterval(gated('payment-expiry warning', runPaymentExpiryWarnings), 2 * 60 * 1000);
+                    hotelPaymentWarningInterval.unref?.();
+                    hotelHourlyJobsInterval = setInterval(gated('hourly jobs', runHotelHourlyJobs), 60 * 60 * 1000);
+                    hotelHourlyJobsInterval.unref?.();
+                })
+                .catch((err) => logger.error(`Hotel jobs failed to start: ${err.message}`));
         };
 
         if (mongoose.connection.readyState === 1) {

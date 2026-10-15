@@ -145,6 +145,24 @@ Dashboard (approved partner, phase-2 version): `GET /partner/dashboard` →
 
 ## Admin (admin token with `hotel` access)
 
+Who gets in (phase 9): `requireServiceAccess('hotel')` then `enforceAdminAccess('hotel', …)`
+(`core/admin/adminAccessPolicy.js`, `HOTEL_ADMIN_RULES`). Superadmins pass. A sub-admin
+needs `hotel` in `servicesAccess` (else **403** on every route) and, per route, the
+permission below: `.read` for GET, `.write` for anything else (**403** "You can view … but
+not change it" when they only have read).
+
+| Path (under `/admin`) | Permission |
+|---|---|
+| `/overview` | `dashboard` |
+| `/partners/*` | `hotel_partners` |
+| `/properties/*` (status, documents/verify, live) | `hotel_properties` |
+| `/bookings/*` (status, refund) | `hotel_bookings` |
+| `/reviews/*` | `hotel_reviews` |
+| `/withdrawals/*` | `hotel_withdrawals` |
+| `/settings` | `hotel_settings` |
+| `/coupons/*` (when hotel coupons land) | `promotions` |
+
+
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/admin/overview` | live: `{ partners: {status: n}, properties: {status: n}, bookings: {status: n} }` |
@@ -489,3 +507,32 @@ over the tables above if they disagree.
     same `hotel_bookings` fields the booking service writes; the `payment` event with
     `kind: 'at_hotel'` (mark-paid) is recorded but never counts as prepaid, and each `refund`
     event (one per actual refund) is keyed by its `refundId`.
+
+## Phase 9 additions (backend: sub-admin access, background jobs)
+
+No endpoint changed shape. Additions:
+
+1. **Sub-admin access**: `hotel` (label "Hotels") is now a panel in
+   `GET /v1/platform/admins/meta` `services`, with a "Hotels" permission group
+   (`hotel_partners`, `hotel_properties`, `hotel_bookings`, `hotel_reviews`,
+   `hotel_withdrawals`, `hotel_settings`; `dashboard` and `promotions` also apply to
+   hotel). `POST/PUT /v1/platform/admins` accept them. See the table under "Admin" above.
+2. **Pushes from the jobs** (`services/jobs.service.js`; `data.type` values):
+   - `hotel_payment_expiring` to the **guest** (push + inbox, `vertical: 'hotel'`), about
+     10 min before `payment.expiresAt` of an `awaiting_payment` booking that is at least
+     2 min old; once (`notificationsSent.paymentExpiryWarning`). `data`: `bookingId`,
+     `bookingRef`, `link: /hotel/bookings/:id`.
+   - `hotel_mark_arrival` to the **partner**, from 03:00 IST on the day after check-in for
+     `confirmed` bookings nobody marked (look-back 7 days); once per booking
+     (`notificationsSent.noShowPrompt`), one push per partner per run. `data`:
+     `bookingIds` (comma-separated), `link` (`/hotel/partner/bookings/:id` for one, else
+     `/hotel/partner/bookings?status=confirmed`), plus `bookingId`/`bookingRef` for one.
+     The booking is **not** changed: the partner marks checked-in or no-show.
+   - `hotel_monthly_summary` to the **partner** on the 1st–3rd (IST) for the previous
+     month, approved partners with at least one stay checked out in it: `data`: `month`
+     ('YYYY-MM'), `link: /hotel/partner/earnings`. Also an email to `HotelPartner.email`
+     when set and SMTP is configured. Figures: stays and room-nights of `checked_out`
+     bookings with `checkOut` in the month, booking value Σ `pricing.total`, commission
+     Σ (`commissionAmount` + `commissionGst`), payout Σ `partnerPayout`. Once per partner
+     per month (`HotelPartner.monthlySummaryFor`, not returned by `/partner/me`).
+

@@ -20,6 +20,7 @@ import { hotelAdmin } from "../api";
 import { useLoad } from "../useLoad";
 import { formatDate, fullAddress, label, money } from "../format";
 import StatusActions from "../components/StatusActions";
+import { useHotelAccess } from "../hotelAccess";
 import { BackLink } from "./PartnerDetail";
 import {
   Button,
@@ -203,7 +204,7 @@ function RoomTypes({ rooms }) {
   );
 }
 
-function Documents({ propertyId, docs, fallbackRequired, onChanged }) {
+function Documents({ propertyId, docs, fallbackRequired, onChanged, readOnly = false }) {
   const [dialog, setDialog] = useState(null); // 'verified' | 'rejected'
   const list = Array.isArray(docs?.documents) ? docs.documents : [];
   const required = Array.isArray(docs?.requiredTypes) ? docs.requiredTypes : fallbackRequired;
@@ -278,12 +279,12 @@ function Documents({ propertyId, docs, fallbackRequired, onChanged }) {
       )}
 
       <div className="mt-4 flex flex-wrap gap-2">
-        {status !== "verified" && (
+        {!readOnly && status !== "verified" && (
           <Button tone="success" icon={FileCheck2} onClick={() => setDialog("verified")}>
             Verify documents
           </Button>
         )}
-        {status !== "rejected" && (
+        {!readOnly && status !== "rejected" && (
           <Button tone="danger" icon={FileX2} onClick={() => setDialog("rejected")}>
             Reject documents
           </Button>
@@ -312,7 +313,7 @@ function Documents({ propertyId, docs, fallbackRequired, onChanged }) {
   );
 }
 
-function LiveToggle({ property, onChanged }) {
+function LiveToggle({ property, onChanged, readOnly = false }) {
   const [open, setOpen] = useState(false);
   const next = !property.isLive;
   const canGoLive = property.status === "approved";
@@ -344,7 +345,7 @@ function LiveToggle({ property, onChanged }) {
           role="switch"
           aria-checked={Boolean(property.isLive)}
           aria-label="Live"
-          disabled={!property.isLive && !canGoLive}
+          disabled={readOnly || (!property.isLive && !canGoLive)}
           onClick={() => setOpen(true)}
           className={cx(
             "relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50",
@@ -368,6 +369,8 @@ function LiveToggle({ property, onChanged }) {
 }
 
 export default function PropertyDetail() {
+  const { canWrite } = useHotelAccess();
+  const readOnly = !canWrite("hotel_properties");
   const { id } = useParams();
   const { data, loading, error, reload } = useLoad(() => hotelAdmin.property(id), [id]);
   const [catalogue, setCatalogue] = useState(null);
@@ -416,7 +419,9 @@ export default function PropertyDetail() {
           </span>
         }
         subtitle={`${label(property.propertyType)} · ${[property.address?.area, property.address?.city].filter(Boolean).join(", ") || "No city"} · updated ${formatDate(property.updatedAt)}`}
-        actions={<StatusActions current={property.status} actions={ACTIONS} onChange={changeStatus} disabled={loading} />}
+        actions={
+          readOnly ? null : <StatusActions current={property.status} actions={ACTIONS} onChange={changeStatus} disabled={loading} />
+        }
       />
 
       {property.rejectionReason && ["rejected", "suspended"].includes(property.status) && (
@@ -541,7 +546,7 @@ export default function PropertyDetail() {
             )}
           </Card>
 
-          <LiveToggle property={property} onChanged={reload} />
+          <LiveToggle property={property} onChanged={reload} readOnly={readOnly} />
 
           <Card title="At a glance">
             <ul className="space-y-2 text-sm">
@@ -570,7 +575,7 @@ export default function PropertyDetail() {
         <RoomTypes rooms={rooms} />
       </Card>
 
-      <Documents propertyId={id} docs={data?.documents} fallbackRequired={fallbackRequired} onChanged={reload} />
+      <Documents readOnly={readOnly} propertyId={id} docs={data?.documents} fallbackRequired={fallbackRequired} onChanged={reload} />
     </div>
   );
 }

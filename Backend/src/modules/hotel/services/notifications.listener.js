@@ -56,25 +56,50 @@ export const notifyGuest = async (booking, { title, body, type }) => {
     }
 };
 
-/** Partner: push to the hotel partner's own device tokens. */
-export const notifyPartner = async (booking, { title, body, type }) => {
-    if (!booking?.partnerId) return;
-    remember({ to: 'partner', partnerId: String(booking.partnerId), title, body, type });
+/**
+ * Push to one hotel partner's own device tokens (web + app). Best-effort: a partner
+ * without tokens, or a failing sender, is logged and skipped. Returns true when a
+ * push was handed to the sender.
+ */
+export const pushToPartner = async (partnerId, { title, body, type, data = {} }, label = '') => {
+    if (!partnerId) return false;
+    remember({ to: 'partner', partnerId: String(partnerId), title, body, type });
     try {
-        const partner = await HotelPartner.findById(booking.partnerId).select('fcmTokens').lean();
+        const partner = await HotelPartner.findById(partnerId).select('fcmTokens').lean();
         const tokens = [...(partner?.fcmTokens?.web || []), ...(partner?.fcmTokens?.app || [])].filter(Boolean);
-        if (!tokens.length) return;
-        await senders.pushTokens(tokens, {
-            title,
-            body,
-            data: { type, bookingId: String(booking._id), bookingRef: String(booking.bookingRef || ''), link: `/hotel/partner/bookings/${booking._id}` },
-        });
+        if (!tokens.length) return false;
+        await senders.pushTokens(tokens, { title, body, data: { type, ...data } });
+        return true;
     } catch (err) {
-        logger.warn(`[hotel] partner push skipped for ${booking.bookingRef}: ${err.message}`);
+        logger.warn(`[hotel] partner push skipped${label ? ` for ${label}` : ''}: ${err.message}`);
+        return false;
     }
 };
 
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+/** Partner: push about one booking. */
+export const notifyPartner = async (booking, { title, body, type }) => {
+    if (!booking?.partnerId) return;
+    await pushToPartner(booking.partnerId, {
+        title,
+        body,
+        type,
+        data: { bookingId: String(booking._id), bookingRef: String(booking.bookingRef || ''), link: `/hotel/partner/bookings/${booking._id}` },
+    }, booking.bookingRef);
+};
+
+/** Email through the swappable sender. False (never a throw) when SMTP is not set up. */
+export const sendEmail = async (mail) => {
+    try {
+        const ok = await senders.email(mail);
+        if (ok !== false) remember({ to: 'email', email: mail.to, type: mail.type || 'hotel_email' });
+        return ok !== false;
+    } catch (err) {
+        logger.warn(`[hotel] email to ${mail?.to} skipped: ${err.message}`);
+        return false;
+    }
+};
+
+export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 const confirmationEmail = async (booking) => {
     const to = booking.guestDetails?.email;

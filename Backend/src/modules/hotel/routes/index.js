@@ -4,7 +4,8 @@
 // Areas:
 //   /public    no auth
 //   /partner   hotel partners (role HOTEL_PARTNER); /partner/auth/* is open
-//   /admin     platform admins with 'hotel' service access
+//   /admin     platform admins with 'hotel' service access; sub-admins are further
+//              limited to the hotel_* permissions they were given (HOTEL_ADMIN_RULES)
 //   /user      customers (booking phase)
 //
 // Every path is under /v1/hotel on purpose: the service-provider legacy delegation
@@ -15,6 +16,8 @@ import '../models/index.js';
 import { authMiddleware } from '../../../core/auth/auth.middleware.js';
 import { requireRoles } from '../../../core/roles/role.middleware.js';
 import { requireServiceAccess } from '../../../core/roles/serviceAccess.middleware.js';
+import { enforceAdminAccess } from '../../../core/admin/enforceAdminAccess.middleware.js';
+import { resolveHotelAdminResource } from '../../../core/admin/adminAccessPolicy.js';
 import { authRateLimiter } from '../../../middleware/rateLimit.js';
 import { requireHotelPartner, requireApprovedHotelPartner } from '../middleware/hotelAuth.js';
 import {
@@ -87,7 +90,10 @@ router.use('/partner', partner);
 
 // ─── Admin ─────────────────────────────────────────────────────────────────
 const adminRouter = express.Router();
-adminRouter.use(authMiddleware, requireRoles('ADMIN'), requireServiceAccess('hotel'));
+// Same shape as food / quick commerce / taxi: requireServiceAccess decides who may
+// enter the panel, enforceAdminAccess what a sub-admin may read or change in it
+// (core/admin/adminAccessPolicy.js HOTEL_ADMIN_RULES). Superadmins pass both.
+adminRouter.use(authMiddleware, requireRoles('ADMIN'), requireServiceAccess('hotel'), enforceAdminAccess('hotel', resolveHotelAdminResource));
 adminRouter.get('/overview', admin.overviewController);
 adminRouter.get('/partners', admin.listPartners);
 adminRouter.get('/partners/:id', admin.getPartner);

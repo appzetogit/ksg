@@ -605,6 +605,36 @@ Deviations; tests: `Backend/tests/hotel.pricing.test.mjs`, `hotel.booking.smoke.
 - Settings (minWithdrawal, settleOn, reviewAutoApprove) come from
   `services/settings.service.js` `getHotelSettings()` via `services/moneySettings.js`.
 
+**Phase 9 (workstream A), as built** (API: `docs/hotel-api-contract.md`, "Phase 9
+additions"; tests: `Backend/tests/admin-access.smoke.mjs` (hotel panel section),
+`Backend/tests/hotel.jobs.smoke.mjs`):
+- **Sub-admin hotel access.** `core/admin/adminAccessPolicy.js`: `hotel` added to
+  `ADMIN_SERVICES`, a "Hotels" group in `ADMIN_PERMISSION_CATALOG` (`hotel_partners`,
+  `hotel_properties`, `hotel_bookings`, `hotel_reviews`, `hotel_withdrawals`,
+  `hotel_settings`; `dashboard`/`promotions` also offered for hotel) and
+  `HOTEL_ADMIN_RULES` + `resolveHotelAdminResource`. The hotel admin router runs
+  `enforceAdminAccess('hotel', resolveHotelAdminResource)` after `requireServiceAccess`.
+  `serviceProvider` stays out of `ADMIN_SERVICES` on purpose: its admin API has no
+  `enforceAdminAccess` and its panel is superadmin-only, so listing it would grant an
+  unrestricted panel (hotel had the same gap until its rules existed).
+  Frontend: the admin-accounts form offers Hotels when `HOTEL_ENABLED` (meta filtered
+  otherwise); the hotel panel hides menu entries and write actions the admin lacks
+  (`useHotelAccess` in `Hotel/admin/hotelAccess.js`, `HOTEL_PAGE_RULES` and a
+  `/admin/hotel` branch in `Food/utils/adminAccess.js` `canOpenPath`); Settings is
+  view-only without `hotel_settings.write`.
+- **Remaining §4.6 jobs** in `services/jobs.service.js`, scheduled in `server.js` next to
+  the expiry/reminder intervals (skipped while the hotel module is off, cleared on
+  shutdown): payment-expiry warning every **2 min** (not 15: a 15-min tick can miss a
+  10-min window); an **hourly** tick for the no-show prompt (acts from 03:00 IST the day
+  after check-in; asks the partner, never auto-marks) and the monthly partner summary
+  (1st–3rd IST, push + `sendHtmlEmail`, skipped quietly without SMTP). Idempotency by
+  conditional writes: `notificationsSent.paymentExpiryWarning` /
+  `notificationsSent.noShowPrompt` on the booking, `monthlySummaryFor` ('YYYY-MM') on
+  the partner. Still not scheduled: the 365-day inventory backfill (rows are created on
+  demand, see phases 2–3).
+- `notifications.listener.js` gained `pushToPartner` (partner push without a booking)
+  and `sendEmail` (swappable sender, never throws); `notifyPartner` uses the former.
+
 ≈ 6–8 weeks for one developer; backend phases 1–5 and frontend 6–8 can run in parallel
 with two people once phase 1 lands.
 

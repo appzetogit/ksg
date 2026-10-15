@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   BedDouble,
   Building2,
   CalendarCheck,
   Landmark,
+  Lock,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -24,7 +25,7 @@ import { adminAPI } from "@food/api";
 import { clearModuleAuth } from "@food/utils/auth";
 import { useAdminAccess, hasPanel, canOpenPath } from "@food/utils/adminAccess";
 import { SERVICE_PROVIDER_ENABLED } from "@/config/features";
-import { readAdminProfile } from "../hotelAccess";
+import { hotelResourceForPath, readAdminProfile, useHotelAccess } from "../hotelAccess";
 import { cx } from "./ui";
 
 /*
@@ -50,14 +51,15 @@ const THEME = `
   .hotel-admin :focus-visible { outline-color: var(--ha-navy); }
 `;
 
+// `resource`: the permission a sub-admin needs to see the entry (hotelAccess.js).
 const NAV = [
-  { to: "/admin/hotel/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/admin/hotel/partners", label: "Partners", icon: Users },
-  { to: "/admin/hotel/properties", label: "Properties", icon: Building2 },
-  { to: "/admin/hotel/bookings", label: "Bookings", icon: CalendarCheck },
-  { to: "/admin/hotel/reviews", label: "Reviews", icon: Star },
-  { to: "/admin/hotel/withdrawals", label: "Withdrawals", icon: Landmark },
-  { to: "/admin/hotel/settings", label: "Settings", icon: Settings },
+  { to: "/admin/hotel/dashboard", label: "Dashboard", icon: LayoutDashboard, resource: "dashboard" },
+  { to: "/admin/hotel/partners", label: "Partners", icon: Users, resource: "hotel_partners" },
+  { to: "/admin/hotel/properties", label: "Properties", icon: Building2, resource: "hotel_properties" },
+  { to: "/admin/hotel/bookings", label: "Bookings", icon: CalendarCheck, resource: "hotel_bookings" },
+  { to: "/admin/hotel/reviews", label: "Reviews", icon: Star, resource: "hotel_reviews" },
+  { to: "/admin/hotel/withdrawals", label: "Withdrawals", icon: Landmark, resource: "hotel_withdrawals" },
+  { to: "/admin/hotel/settings", label: "Settings", icon: Settings, resource: "hotel_settings" },
 ];
 
 const TITLES = [
@@ -109,6 +111,8 @@ function PanelSwitcher() {
 }
 
 function Sidebar({ open, onClose }) {
+  const { canRead } = useHotelAccess();
+  const nav = NAV.filter((n) => canRead(n.resource));
   return (
     <>
       <div
@@ -148,7 +152,7 @@ function Sidebar({ open, onClose }) {
 
         <nav className="flex-1 space-y-1 overflow-y-auto p-3">
           <p className="px-3 pb-1 pt-2 text-[11px] font-bold uppercase tracking-widest text-[var(--ha-ink-faint)]">Hotel</p>
-          {NAV.map(({ to, label, icon: Icon, soon }) =>
+          {nav.map(({ to, label, icon: Icon, soon }) =>
             soon ? (
               <div
                 key={label}
@@ -259,6 +263,31 @@ function Header({ onMenu }) {
   );
 }
 
+function NoAccess() {
+  return (
+    <div className="mx-auto mt-16 max-w-md rounded-2xl border border-[var(--ha-border)] bg-white p-8 text-center">
+      <Lock className="mx-auto h-8 w-8 text-[var(--ha-ink-faint)]" />
+      <h2 className="mt-3 text-base font-bold text-[var(--ha-ink)]">No access to this section</h2>
+      <p className="mt-1 text-sm text-[var(--ha-ink-soft)]">Ask a superadmin to give your account this hotel section.</p>
+    </div>
+  );
+}
+
+/**
+ * A sub-admin opening a hotel screen they were not given goes to the first one
+ * they were; with none at all they see a notice. (The server refuses the data
+ * either way; this saves them a page of errors.)
+ */
+function GatedOutlet() {
+  const { pathname } = useLocation();
+  const { canRead, loading } = useHotelAccess();
+  if (loading) return null;
+  const resource = hotelResourceForPath(pathname);
+  if (!resource || canRead(resource)) return <Outlet />;
+  const first = NAV.find((n) => canRead(n.resource));
+  return first ? <Navigate to={first.to} replace /> : <NoAccess />;
+}
+
 export default function HotelAdminLayout() {
   const [open, setOpen] = useState(false);
   const { pathname } = useLocation();
@@ -271,7 +300,7 @@ export default function HotelAdminLayout() {
       <div className="flex min-h-screen min-w-0 flex-col lg:pl-72">
         <Header onMenu={() => setOpen(true)} />
         <main className="w-full min-w-0 flex-1 p-4 sm:p-6">
-          <Outlet />
+          <GatedOutlet />
         </main>
       </div>
     </div>

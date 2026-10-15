@@ -57,6 +57,9 @@ const hotelPartnerSchema = new mongoose.Schema(
             web: { type: [String], default: [] },
             app: { type: [String], default: [] },
         },
+        // 'YYYY-MM' of the last monthly summary sent (services/jobs.service.js); the
+        // conditional write on it makes the summary once per partner per month.
+        monthlySummaryFor: { type: String, default: '' },
         termsAcceptedAt: Date,
         lastLoginAt: Date,
         isDeleted: { type: Boolean, default: false },
@@ -73,6 +76,7 @@ hotelPartnerSchema.methods.toPartnerJSON = function toPartnerJSON() {
     const obj = this.toObject({ versionKey: false });
     delete obj.approvedBy;
     delete obj.isDeleted;
+    delete obj.monthlySummaryFor;
     if (obj.bank) delete obj.bank.razorpayFundAccountId;
     return obj;
 };
