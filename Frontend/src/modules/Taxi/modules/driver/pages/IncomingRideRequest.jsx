@@ -14,6 +14,9 @@ import {
   X,
 } from 'lucide-react';
 import { getScheduledRideCountdown } from '../utils/scheduledRideTime';
+import { getHubCharges, getHubs, hubFeeFor, sumPassThrough, HubBadge } from '../../shared/components/HubCharges';
+
+const formatDriverRs = (amount) => `Rs ${Math.round(Number(amount) || 0)}`;
 
 const Motion = motion;
 const DEFAULT_ACCEPT_REJECT_SECONDS = 15;
@@ -145,6 +148,10 @@ const IncomingRideRequest = ({
   const accentTextClass = isParcel ? 'text-accent-orange' : isIntercity ? 'text-yellow-700' : 'text-blue-600';
   const pickupAddress = data.raw?.pickupAddress || data.pickup || 'Pickup point';
   const dropAddress = data.raw?.dropAddress || data.drop || 'Drop point';
+  // Airport / station charges (optional, see docs/taxi-transit-hubs-contract.md).
+  const hubLines = getHubCharges(data.raw || data);
+  const hubInfo = getHubs(data.raw || data);
+  const hubPassThrough = sumPassThrough(hubLines);
   const attemptCount = Number(data.attempt || data.raw?.attempt || 1);
   const maxAttempts = Number(data.maxAttempts || data.raw?.maxAttempts || 1);
   const searchRadiusMeters = Number(data.raw?.radius || data.radius || 0);
@@ -266,6 +273,13 @@ const IncomingRideRequest = ({
               </div>
             </div>
 
+            {hubPassThrough > 0 && (
+              <div className="-mt-2 mb-4 flex items-center justify-between rounded-[14px] border border-emerald-100 bg-emerald-50 px-3 py-2">
+                <span className="text-[11px] font-black text-emerald-700">Airport/parking fees (yours)</span>
+                <span className="text-[12px] font-black text-emerald-700">+{formatDriverRs(hubPassThrough)}</span>
+              </div>
+            )}
+
             {isPreviewMode ? (
               <div className="mb-4 rounded-[18px] border border-blue-100 bg-blue-50 px-4 py-3">
                 <div className="flex items-start gap-3">
@@ -341,6 +355,9 @@ const IncomingRideRequest = ({
                   <div className="min-w-0 flex-1 pb-5">
                     <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">Pickup</p>
                     <p className="mt-1 line-clamp-2 text-[14px] font-black leading-snug text-slate-950">{pickupAddress}</p>
+                    {hubInfo.pickup && (
+                      <HubBadge hub={hubInfo.pickup} role="pickup" audience="driver" fee={hubFeeFor(hubLines, 'pickup')} formatAmount={formatDriverRs} className="mt-1.5" />
+                    )}
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
@@ -350,6 +367,9 @@ const IncomingRideRequest = ({
                   <div className="min-w-0 flex-1">
                     <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">Drop</p>
                     <p className="mt-1 line-clamp-2 text-[14px] font-black leading-snug text-slate-950">{dropAddress}</p>
+                    {hubInfo.drop && (
+                      <HubBadge hub={hubInfo.drop} role="drop" audience="driver" fee={hubFeeFor(hubLines, 'drop')} formatAmount={formatDriverRs} className="mt-1.5" />
+                    )}
                   </div>
                 </div>
               </div>

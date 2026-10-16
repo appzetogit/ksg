@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import DriverBottomNav from '../../shared/components/DriverBottomNav';
+import { getHubCharges, sumPassThrough } from '../../shared/components/HubCharges';
 import { getDriverRideHistory } from '../services/registrationService';
 
 const TABS = [
@@ -166,6 +167,8 @@ const normalizeRide = (ride) => {
     commission,
     surge,
     tip,
+    // Hub fees and parking the driver keeps in full (optional).
+    hubPassThrough: sumPassThrough(getHubCharges(ride)),
     promoCode: ride?.promo?.code || '',
     promoDiscount: Number(ride?.promo?.discount_amount || 0),
     fareLabel: formatCurrency(ride?.fare || 0),
@@ -487,6 +490,12 @@ const RideRequests = () => {
                       <div className="flex justify-between items-center text-[11px] font-bold text-slate-600">
                         <span>Surge Amount</span>
                         <span>{formatCurrency(item.surge)}</span>
+                      </div>
+                    )}
+                    {item.hubPassThrough > 0 && (
+                      <div className="flex justify-between items-center text-[11px] font-bold text-emerald-600">
+                        <span>Airport/parking fees (yours)</span>
+                        <span>{formatCurrency(item.hubPassThrough)}</span>
                       </div>
                     )}
                     {item.tip > 0 && (

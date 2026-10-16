@@ -1,8 +1,26 @@
 import React, { forwardRef } from 'react';
 import { GoogleMap, MarkerF, PolylineF } from '@react-google-maps/api';
+import { getHubCharges, hubLineLabel, sumHubCharges } from '../../shared/components/HubCharges';
+
+// Airport / station lines, styled like the other bill rows (plain text, no
+// icons, so the PDF capture stays clean). Renders nothing when absent.
+const InvoiceHubLines = ({ lines }) => {
+  if (!lines?.length) return null;
+  return lines.map((line, index) => (
+    <div key={`${line.code || 'hub'}-${index}`} className="flex justify-between text-base">
+      <span style={{ color: '#4b5563' }}>
+        {hubLineLabel(line)}
+        {line.estimated ? ' (estimated, based on waiting)' : ''}
+      </span>
+      <span style={{ color: '#000000' }}>₹ {Number(line.amount).toFixed(2)}</span>
+    </div>
+  ));
+};
 
 export const InvoiceTemplate = forwardRef(({ details, ride, appName, appLogo, mapImageUrl }, ref) => {
   if (!details || !ride) return null;
+  const hubLines = details.hubCharges || getHubCharges(ride);
+  const hubLinesTotal = sumHubCharges(hubLines);
 
   return (
     <>
@@ -112,6 +130,7 @@ export const InvoiceTemplate = forwardRef(({ details, ride, appName, appLogo, ma
                 <span style={{ color: '#000000' }}>₹ {details.adminExtraChargeAmount.toFixed(2)}</span>
               </div>
             )}
+            <InvoiceHubLines lines={hubLines} />
             {details.promoDiscountAmount > 0 && (
               <div className="flex justify-between text-base">
                 <span style={{ color: '#16a34a' }}>Discount</span>
@@ -199,6 +218,7 @@ export const InvoiceTemplate = forwardRef(({ details, ride, appName, appLogo, ma
               <span style={{ color: '#000000' }}>₹ {details.additionalCharge.toFixed(2)}</span>
             </div>
           )}
+          <InvoiceHubLines lines={hubLines} />
           {details.promoDiscountAmount > 0 && (
             <div className="flex justify-between text-base">
               <span style={{ color: '#16a34a' }}>Discount Applied</span>
@@ -211,7 +231,7 @@ export const InvoiceTemplate = forwardRef(({ details, ride, appName, appLogo, ma
           <div>
             <div className="text-2xl font-bold" style={{ color: '#000000' }}>Ride Charge</div>
           </div>
-          <div className="text-[28px] font-medium" style={{ color: '#000000' }}>₹ {(details.baseFare + details.distanceChargeAmount + details.timeChargeAmount + details.waitingChargeAmount + details.additionalCharge - details.promoDiscountAmount).toFixed(2)}</div>
+          <div className="text-[28px] font-medium" style={{ color: '#000000' }}>₹ {(details.baseFare + details.distanceChargeAmount + details.timeChargeAmount + details.waitingChargeAmount + details.additionalCharge + hubLinesTotal - details.promoDiscountAmount).toFixed(2)}</div>
         </div>
 
         <div className="mt-auto pt-6 text-center text-xs leading-relaxed max-w-[600px] mx-auto" style={{ borderTop: '1px solid #f3f4f6', color: '#9ca3af' }}>

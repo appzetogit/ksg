@@ -26,6 +26,7 @@ import { socketService } from '../../../shared/api/socket';
 import api from '../../../shared/api/axiosInstance';
 import carIcon from '../../../assets/icons/car.png';
 import { getLocalDriverToken } from '../services/registrationService';
+import { getHubCharges, getHubs, hubFeeFor, sumHubCharges, sumPassThrough, HubBadge, HubBadges, HubChargeLines } from '../../shared/components/HubCharges';
 
 const MAP_CONTAINER_STYLE = {
     width: '100%',
@@ -433,8 +434,11 @@ const formatDurationLabel = (start, end = Date.now()) => {
     return `${minutes} min`;
 };
 
-const computeCommissionSummary = ({ fare = 0, pricingSnapshot = null, explicitCommissionAmount, explicitDriverEarnings }) => {
-    const normalizedFare = Math.max(0, Number(fare || 0));
+const computeCommissionSummary = ({ fare = 0, pricingSnapshot = null, explicitCommissionAmount, explicitDriverEarnings, passThroughAmount = 0 }) => {
+    // Hub fees and parking are not commissionable and go to the driver in full:
+    // commission is taken on the rest of the fare, then they are added back.
+    const passThrough = Math.max(0, Math.min(Number(passThroughAmount || 0), Math.max(0, Number(fare || 0))));
+    const normalizedFare = Math.max(0, Number(fare || 0) - passThrough);
     const commissionType = Number(pricingSnapshot?.admin_commission_type_from_driver ?? 1);
     const commissionValue = Math.max(0, Number(pricingSnapshot?.admin_commission_from_driver ?? 0));
     const fallbackCommissionAmount = commissionType === 1
@@ -450,7 +454,7 @@ const computeCommissionSummary = ({ fare = 0, pricingSnapshot = null, explicitCo
     const commissionAmount = hasSettledExplicitCommission
         ? Math.max(0, normalizedExplicitCommission)
         : fallbackCommissionAmount;
-    const derivedDriverEarnings = Math.max(normalizedFare - commissionAmount, 0);
+    const derivedDriverEarnings = Math.max(normalizedFare - commissionAmount, 0) + passThrough;
     const hasSettledExplicitDriverEarnings = Number.isFinite(normalizedExplicitDriverEarnings) && (
         normalizedExplicitDriverEarnings > 0
         || normalizedFare <= 0
@@ -1329,6 +1333,15 @@ const ActiveTrip = () => {
     const cancellationChargeAmount = Number(liveRaw?.recovered_cancellation_due ?? effectiveState?.recovered_cancellation_due ?? 0);
     const promoDiscountAmount = Number(liveRaw?.promo?.discount_amount ?? effectiveState?.promo?.discount_amount ?? 0);
     const promoCodeApplied = liveRaw?.promo?.code || effectiveState?.promo?.code || '';
+    // Airport / station charges (optional, see docs/taxi-transit-hubs-contract.md).
+    // Fees and parking pass through to the driver in full; surge is ordinary fare.
+    const hubSource = getHubCharges(liveRaw).length || getHubs(liveRaw).pickup || getHubs(liveRaw).drop
+        ? liveRaw
+        : (effectiveState || {});
+    const hubLines = getHubCharges(hubSource);
+    const hubInfo = getHubs(hubSource);
+    const hubChargesTotal = sumHubCharges(hubLines);
+    const hubPassThrough = sumPassThrough(hubLines);
 
     /*
      * From arrival at the destination the server's fare IS the fare: the
@@ -1342,7 +1355,7 @@ const ActiveTrip = () => {
     const serverFareAmount = Number(liveRaw?.fare ?? effectiveState?.fare ?? 0);
     const rawFareAmount = isFareFinalisedByServer && serverFareAmount > 0
         ? serverFareAmount
-        : Math.max(0, baseFareAmount + waitingCharge + timeCharge + additionalCharge + adminExtraChargeAmount + cancellationChargeAmount - promoDiscountAmount);
+        : Math.max(0, baseFareAmount + waitingCharge + timeCharge + additionalCharge + adminExtraChargeAmount + hubChargesTotal + cancellationChargeAmount - promoDiscountAmount);
     const fareAmount = Math.ceil(rawFareAmount);
 
     const displayFare = `Rs ${fareAmount}`;
@@ -1413,6 +1426,7 @@ const ActiveTrip = () => {
         pricingSnapshot: waitingPricing,
         explicitCommissionAmount: liveRaw?.commissionAmount ?? effectiveState?.commissionAmount,
         explicitDriverEarnings: liveRaw?.driverEarnings ?? effectiveState?.driverEarnings,
+        passThroughAmount: hubPassThrough,
     });
     const paymentCollectionLabel = isParcel ? 'receiver' : 'rider';
     const routeStrokeColor = '#0F766E';
@@ -1564,6 +1578,8 @@ const ActiveTrip = () => {
                     cancellationChargeAmount: cancellationChargeAmount,
                     driverEarnings: commissionSummary.driverEarnings,
                     commissionAmount: commissionSummary.commissionAmount,
+                    hubCharges: hubLines,
+                    hubs: hubInfo,
                     pickup: tripData.pickup,
                     drop: tripData.drop,
                     paymentMethod: paymentModeLabel,
@@ -2308,6 +2324,9 @@ const ActiveTrip = () => {
                                     <button onClick={() => callContact(pickupContact?.phone)} className="w-11 h-11 bg-slate-50 rounded-xl flex items-center justify-center active:scale-95 transition-transform" style={{ color: routeStrokeColor }} aria-label="Call contact"><Phone size={18} strokeWidth={2.5} /></button>
                                 </div>
                             </div>
+                            {(hubInfo.pickup || hubInfo.drop) && (
+                                <HubBadges source={hubSource} audience="driver" formatAmount={(amount) => `Rs ${Math.round(amount)}`} className="mb-2" />
+                            )}
                             {(waitingPricing?.driver_cancellation_fee > 0 || waitingPricing?.waiting_charge > 0) && (
                                 <div className="mb-2 rounded-2xl border border-slate-100 bg-slate-50/50 px-4 py-2.5 text-[11px] font-bold text-slate-500 flex flex-col gap-1 shadow-sm">
                                     <div className="flex items-center justify-between">
@@ -2475,6 +2494,9 @@ const ActiveTrip = () => {
                                         <p className="text-[15px] font-semibold text-slate-900 tracking-tight leading-5 break-words">
                                             {tripData.drop}
                                         </p>
+                                        {hubInfo.drop && (
+                                            <HubBadge hub={hubInfo.drop} role="drop" audience="driver" fee={hubFeeFor(hubLines, 'drop')} formatAmount={(amount) => `Rs ${Math.round(amount)}`} className="mt-1.5" />
+                                        )}
                                     </div>
                                     <button
                                         onClick={triggerEmergencySos}
@@ -2596,6 +2618,19 @@ const ActiveTrip = () => {
                                                     <div className="flex items-center justify-between">
                                                         <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600">Admin Extra Charge</span>
                                                         <span className="text-[11px] font-black text-slate-900">Rs {adminExtraChargeAmount.toFixed(2)}</span>
+                                                    </div>
+                                                )}
+                                                <HubChargeLines
+                                                    lines={hubLines}
+                                                    formatAmount={(amount) => `Rs ${Number(amount).toFixed(2)}`}
+                                                    rowClassName="flex items-start justify-between gap-3 text-[10px] font-bold uppercase tracking-wider text-slate-700"
+                                                    amountClassName="shrink-0 text-[11px] font-black text-slate-900"
+                                                    noteClassName="block text-[9px] font-bold normal-case tracking-normal text-slate-400"
+                                                />
+                                                {hubPassThrough > 0 && (
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Airport/parking fees (yours)</span>
+                                                        <span className="text-[11px] font-black text-emerald-600">Rs {hubPassThrough.toFixed(2)}</span>
                                                     </div>
                                                 )}
                                                 {promoDiscountAmount > 0 && (

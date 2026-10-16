@@ -32,6 +32,7 @@ import LowBalanceModal from './LowBalanceModal';
 
 import MapGrid from '@/assets/premium_grid_map.png';
 import DriverBottomNav from '../../shared/components/DriverBottomNav';
+import { getHubCharges, sumPassThrough, HubChargeLines } from '../../shared/components/HubCharges';
 import IncomingRideRequest from './IncomingRideRequest';
 import api from '../../../shared/api/axiosInstance';
 import WorkModeToggle from '../components/WorkModeToggle';
@@ -1867,6 +1868,20 @@ const DriverHome = () => {
                                             <span className="font-bold">₹{Number(completedTripDetails.cancellationChargeAmount || 0).toFixed(2)}</span>
                                         </div>
                                     )}
+                                    {sumPassThrough(getHubCharges(completedTripDetails)) > 0 && (
+                                        <div className="flex justify-between items-center text-xs text-emerald-600 dark:text-emerald-400">
+                                            <span className="font-semibold">Airport/parking fees (yours)</span>
+                                            <span className="font-bold">₹{sumPassThrough(getHubCharges(completedTripDetails)).toFixed(2)}</span>
+                                        </div>
+                                    )}
+                                    <HubChargeLines
+                                        lines={getHubCharges(completedTripDetails)}
+                                        formatAmount={(amount) => `₹${Number(amount).toFixed(2)}`}
+                                        rowClassName="flex justify-between items-start gap-3 pl-3 text-[11px] text-slate-500 dark:text-slate-400"
+                                        amountClassName="shrink-0 font-bold text-slate-900 dark:text-white"
+                                        noteClassName="block text-[10px] font-medium text-slate-400"
+                                        iconClassName="shrink-0 text-slate-400"
+                                    />
                                     <div className="flex justify-between items-center text-xs text-rose-500 dark:text-rose-400">
                                         <span className="font-semibold">Admin Commission</span>
                                         <span className="font-bold">-₹{Number(completedTripDetails.commissionAmount || 0).toFixed(2)}</span>

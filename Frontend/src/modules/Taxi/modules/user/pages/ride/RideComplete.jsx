@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Banknote, CheckCircle2, ChevronRight, CreditCard, MessageSquare, Receipt, Share2, Star, Wallet } from 'lucide-react';
+import { getHubCharges, sumHubCharges, HubChargeLines } from '../../../shared/components/HubCharges';
 import api from '../../../../shared/api/axiosInstance';
 import { userAuthService } from '../../services/authService';
 import { clearCurrentRide, getCurrentRide } from '../../services/currentRideService';
@@ -104,9 +105,10 @@ const RideComplete = () => {
     fare: Number(state.fare || 22),
     baseFare: Number(
       state?.baseFare ??
-      (state?.fare ? (state.fare - (state.waitingChargeAmount || 0) - (state.timeChargeAmount || 0) - (state.distanceChargeAmount || 0) - (state.additionalCharge || 0)) : null) ??
+      (state?.fare ? (state.fare - (state.waitingChargeAmount || 0) - (state.timeChargeAmount || 0) - (state.distanceChargeAmount || 0) - (state.additionalCharge || 0) - sumHubCharges(getHubCharges(state))) : null) ??
       0
     ),
+    hubCharges: getHubCharges(state),
     waitingChargeAmount: Number(state?.waitingChargeAmount || 0),
     distanceChargeAmount: Number(state?.distanceChargeAmount || 0),
     timeChargeAmount: Number(state?.timeChargeAmount || 0),
@@ -135,14 +137,17 @@ const RideComplete = () => {
   const additionalCharge = rideDetails.additionalCharge;
   const adminExtraChargeAmount = Number(rideDetails.adminExtraCharge?.amount || 0);
   const cancellationCharge = rideDetails.cancellationCharge;
-  
+  // Airport / station lines (optional, see docs/taxi-transit-hubs-contract.md).
+  const hubCharges = rideDetails.hubCharges || [];
+  const hubChargesTotal = sumHubCharges(hubCharges);
+
   const promoDiscountAmount = Number(rideDetails.promo?.discount_amount || 0);
   const promoCode = rideDetails.promo?.code || '';
   
   // Merge cancellation charge into base fare so it's not shown separately to the user
   const baseFare = Math.ceil(rawBaseFare + cancellationCharge);
   
-  const totalBill = Math.ceil(baseFare + waitingChargeAmount + distanceChargeAmount + timeChargeAmount + additionalCharge + adminExtraChargeAmount - promoDiscountAmount + Number(selectedTip || 0));
+  const totalBill = Math.ceil(baseFare + waitingChargeAmount + distanceChargeAmount + timeChargeAmount + additionalCharge + adminExtraChargeAmount + hubChargesTotal - promoDiscountAmount + Number(selectedTip || 0));
   const paymentMethod = rideDetails.paymentMethod;
   const paymentMethodLabel = PAYMENT_OPTIONS.find((option) => option.id === selectedPaymentMethod)?.label || paymentMethod;
   const pickup = rideDetails.pickup;
@@ -157,7 +162,7 @@ const RideComplete = () => {
     ...driver,
     vehicleIconUrl: driver.vehicleIconUrl || state.vehicleIconUrl || state.vehicle?.vehicleIconUrl || state.vehicle?.icon || '',
   });
-  const rideBaseBill = Math.ceil(baseFare + waitingChargeAmount + distanceChargeAmount + timeChargeAmount + additionalCharge + adminExtraChargeAmount - promoDiscountAmount);
+  const rideBaseBill = Math.ceil(baseFare + waitingChargeAmount + distanceChargeAmount + timeChargeAmount + additionalCharge + adminExtraChargeAmount + hubChargesTotal - promoDiscountAmount);
   const fareDueNow = isCollectionPaid(paymentCollection) ? 0 : rideBaseBill;
   const payableNow = fareDueNow + Number(selectedTip || 0);
   const isRideFinalized = ['completed', 'delivered'].includes(rideLiveStatus) || Boolean(state.feedback?.submittedAt);
@@ -216,11 +221,14 @@ const RideComplete = () => {
           const distAmt = Number(payload.distanceChargeAmount ?? state.distanceChargeAmount ?? 0);
           const timeAmt = Number(payload.timeChargeAmount ?? state.timeChargeAmount ?? 0);
           const addAmt = Number(payload.additionalCharge ?? state.additionalCharge ?? 0);
+          const payloadHubCharges = getHubCharges(payload);
+          const resolvedHubCharges = payloadHubCharges.length ? payloadHubCharges : getHubCharges(state);
+          const hubAmt = sumHubCharges(resolvedHubCharges);
           const resolvedBase = Number(
             payload.baseFare ??
-            (payload.fare ? (payload.fare - waitAmt - distAmt - timeAmt - addAmt - Number(payload.recovered_cancellation_due || 0) - Number(payload.adminExtraCharge?.amount || 0)) : null) ??
+            (payload.fare ? (payload.fare - waitAmt - distAmt - timeAmt - addAmt - hubAmt - Number(payload.recovered_cancellation_due || 0) - Number(payload.adminExtraCharge?.amount || 0)) : null) ??
             state.baseFare ??
-            (state.fare ? (state.fare - waitAmt - distAmt - timeAmt - addAmt - Number(state.recovered_cancellation_due || 0) - Number(state.adminExtraCharge?.amount || state.adminExtraChargeAmount || 0)) : null) ??
+            (state.fare ? (state.fare - waitAmt - distAmt - timeAmt - addAmt - hubAmt - Number(state.recovered_cancellation_due || 0) - Number(state.adminExtraCharge?.amount || state.adminExtraChargeAmount || 0)) : null) ??
             0
           );
 
@@ -231,6 +239,7 @@ const RideComplete = () => {
             distanceChargeAmount: distAmt,
             timeChargeAmount: timeAmt,
             additionalCharge: addAmt,
+            hubCharges: resolvedHubCharges,
             adminExtraCharge: payload.adminExtraCharge ?? state.adminExtraCharge ?? null,
             cancellationCharge: Number(payload.recovered_cancellation_due ?? state.recovered_cancellation_due ?? state.cancellationCharge ?? 0),
             paymentMethod: payload.paymentMethod || state.paymentMethod || 'Cash',
@@ -719,6 +728,13 @@ const RideComplete = () => {
                   <span>Rs {adminExtraChargeAmount.toFixed(2)}</span>
                 </div>
               )}
+              <HubChargeLines
+                lines={hubCharges}
+                formatAmount={(amount) => `Rs ${Number(amount).toFixed(2)}`}
+                rowClassName="mt-2 flex items-start justify-between gap-3 text-[12px] font-bold text-slate-500"
+                amountClassName="shrink-0 text-[13px] font-black text-[#0F766E]"
+                noteClassName="block text-[10px] font-bold text-slate-400"
+              />
               {promoDiscountAmount > 0 && (
                 <div className="mt-2 flex items-center justify-between">
                   <span className="text-[12px] font-bold text-emerald-600">Promo ({promoCode}) Applied</span>

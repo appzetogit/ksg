@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, X, Banknote, CreditCard, ChevronDown, Clock3, LoaderCircle, Eye, TicketPercent, CheckCircle2 } from 'lucide-react';
+import { getHubCharges, getHubs, hubFeeFor, HubBadge, HubChargeLines } from '../../../shared/components/HubCharges';
 import { GoogleMap, MarkerF, OverlayView, PolylineF } from '@react-google-maps/api';
 import api from '../../../../shared/api/axiosInstance';
 import { HAS_VALID_GOOGLE_MAPS_KEY, useAppGoogleMapsLoader } from '../../../admin/utils/googleMaps';
@@ -1288,6 +1289,8 @@ const SelectVehicle = () => {
    * cannot be fetched, so the screen is never blank.
    */
   const [serverQuotes, setServerQuotes] = useState({});
+  // Airport / station charges per vehicle type, from the same quote (optional).
+  const [serverQuoteHubs, setServerQuoteHubs] = useState({});
   const [isLoadingServerQuotes, setIsLoadingServerQuotes] = useState(false);
   const vehicleQuoteKey = useMemo(
     () => vehicles.map((v) => `${v.vehicleTypeId || ''}:${v.transportType || ''}`).join(','),
@@ -1297,6 +1300,7 @@ const SelectVehicle = () => {
   useEffect(() => {
     if (!vehicles.length || !Array.isArray(pickupCoords) || !Array.isArray(dropCoords)) {
       setServerQuotes({});
+      setServerQuoteHubs({});
       return undefined;
     }
 
@@ -1310,6 +1314,7 @@ const SelectVehicle = () => {
     }
     if (!groups.size) {
       setServerQuotes({});
+      setServerQuoteHubs({});
       return undefined;
     }
 
@@ -1334,11 +1339,21 @@ const SelectVehicle = () => {
         );
         if (!active) return;
         const next = {};
+        const nextHubs = {};
         for (const quote of results.flat()) {
           const total = Number(quote?.fare?.total);
-          if (quote?.available && Number.isFinite(total)) next[String(quote.vehicleTypeId)] = total;
+          if (quote?.available && Number.isFinite(total)) {
+            next[String(quote.vehicleTypeId)] = total;
+            // Optional (docs/taxi-transit-hubs-contract.md); absent on older servers.
+            const hubCharges = getHubCharges(quote);
+            const hubs = getHubs(quote);
+            if (hubCharges.length || hubs.pickup || hubs.drop) {
+              nextHubs[String(quote.vehicleTypeId)] = { hubCharges, hubs };
+            }
+          }
         }
         setServerQuotes(next);
+        setServerQuoteHubs(nextHubs);
       } finally {
         if (active) setIsLoadingServerQuotes(false);
       }
@@ -1367,6 +1382,7 @@ const SelectVehicle = () => {
 
         const serverTotal = serverQuotes[String(vehicle.vehicleTypeId)];
         const hasServerQuote = Number.isFinite(serverTotal);
+        const quoteHubs = hasServerQuote ? serverQuoteHubs[String(vehicle.vehicleTypeId)] : null;
 
         return {
           ...vehicle,
@@ -1385,9 +1401,11 @@ const SelectVehicle = () => {
               transportType: resolvedVehicleTransportType,
             })) + pendingCancellationDue,
           priceIsServerQuote: hasServerQuote,
+          hubCharges: quoteHubs?.hubCharges || [],
+          hubs: quoteHubs?.hubs || null,
         };
       }),
-    [pricingRules, effectiveServiceLocationId, matchedZoneId, tripMetrics.distanceMeters, tripMetrics.durationMinutes, vehicles, pendingCancellationDue, serverQuotes],
+    [pricingRules, effectiveServiceLocationId, matchedZoneId, tripMetrics.distanceMeters, tripMetrics.durationMinutes, vehicles, pendingCancellationDue, serverQuotes, serverQuoteHubs],
   );
 
   // Held until the server's price arrives, so the customer is not shown the
@@ -1943,7 +1961,18 @@ const SelectVehicle = () => {
                   <span className="h-2.5 w-2.5 rounded-full bg-[#d95c6a]" />
                 </div>
                 <div className="min-w-0 flex-1 space-y-3">
-                  <p className="pt-0.5 truncate text-[13px] font-medium text-slate-700">{pickup}</p>
+                  <div className="min-w-0">
+                    <p className="pt-0.5 truncate text-[13px] font-medium text-slate-700">{pickup}</p>
+                    {selectedVehicle?.hubs?.pickup && (
+                      <HubBadge
+                        hub={selectedVehicle.hubs.pickup}
+                        role="pickup"
+                        fee={hubFeeFor(selectedVehicle.hubCharges, 'pickup')}
+                        formatAmount={formatCurrency}
+                        className="mt-1"
+                      />
+                    )}
+                  </div>
                   <button
                     type="button"
                     onClick={openLocationEditor}
@@ -1951,6 +1980,15 @@ const SelectVehicle = () => {
                   >
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[13px] font-medium text-slate-700">{drop}</p>
+                      {selectedVehicle?.hubs?.drop && (
+                        <HubBadge
+                          hub={selectedVehicle.hubs.drop}
+                          role="drop"
+                          fee={hubFeeFor(selectedVehicle.hubCharges, 'drop')}
+                          formatAmount={formatCurrency}
+                          className="mt-1"
+                        />
+                      )}
                     </div>
                     <span className="shrink-0 text-[11px] font-semibold text-slate-400">Edit</span>
                   </button>
@@ -2159,6 +2197,17 @@ const SelectVehicle = () => {
                               <p className="mt-1 text-[10px] font-medium text-rose-500">{driverLoadError}</p>
                             )}
                           </div>
+                          {!isFarePending && v.hubCharges?.length > 0 && (
+                            <div className="mt-2 space-y-1 rounded-[12px] border border-slate-100 bg-white px-2.5 py-2">
+                              <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">Included in fare</p>
+                              <HubChargeLines
+                                lines={v.hubCharges}
+                                formatAmount={formatCurrency}
+                                rowClassName="flex items-start justify-between gap-3 text-[11px] font-medium text-slate-600"
+                                amountClassName="shrink-0 font-semibold text-slate-900"
+                              />
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -2341,6 +2390,21 @@ const SelectVehicle = () => {
                   </p>
                 </div>
               </div>
+
+              {!isFarePending && previewVehicle.hubCharges?.length > 0 && (
+                <div className="mt-4 rounded-[18px] border border-slate-100 bg-slate-50/70 px-4 py-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Airport / station charges</p>
+                  <div className="mt-2 space-y-1.5">
+                    <HubChargeLines
+                      lines={previewVehicle.hubCharges}
+                      formatAmount={formatCurrency}
+                      rowClassName="flex items-start justify-between gap-3 text-[12px] font-bold text-slate-600"
+                      amountClassName="shrink-0 font-extrabold text-slate-900"
+                    />
+                  </div>
+                  <p className="mt-2 text-[10px] font-bold text-slate-400">Included in the estimated fare above.</p>
+                </div>
+              )}
 
               <div className="mt-4 rounded-[20px] border border-primary-orange/10 bg-primary-orange/5/60 px-4 py-4">
                 <p className="text-[10px] font-black uppercase tracking-[0.14em] text-primary-orange/50">Trip snapshot</p>
