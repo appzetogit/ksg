@@ -90,7 +90,8 @@ const MUST_BE_OUTSIDE = {
   Sittwe: [20.15, 92.9], Mandalay: [21.9588, 96.0891], Lhasa: [29.652, 91.1721], Kabul: [34.5553, 69.2075],
 };
 
-if (/(^|[/])india-zone.mjs$/.test(process.argv[1] || '')) {
+// Self-test only when run directly (not when imported by apply-india-zone.mjs).
+if (/(^|[\\/])india-zone\.mjs$/.test(process.argv[1] || '')) {
   const badIn = Object.entries(MUST_BE_INSIDE).filter(([, p]) => !inside(p)).map(([n]) => n);
   const badOut = Object.entries(MUST_BE_OUTSIDE).filter(([, p]) => inside(p)).map(([n]) => n);
   console.log(`vertices ${INDIA_OUTLINE.length}`);
