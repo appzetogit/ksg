@@ -1,7 +1,7 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ArrowRight } from 'lucide-react';
+import { ArrowLeft, ArrowRight, TrainFront } from 'lucide-react';
 import { useSettings } from '../../../../shared/context/SettingsContext';
 
 import imgShared    from '@/assets/3d images/AutoCab/taxi.png';
@@ -28,8 +28,19 @@ const services = [
     img: imgAirport,
     path: '/cab/airport',
     accent: 'bg-[linear-gradient(135deg,#EFF6FF_0%,#DBEAFE_100%)]',
-    tag: 'Fixed fare',
+    tag: 'Nearby airports',
     tagColor: 'bg-blue-50 text-blue-600 border-blue-100',
+  },
+  {
+    id: 'railway',
+    title: 'Railway Station',
+    sub: 'Pickup and drop at the station',
+    Icon: TrainFront,
+    iconColor: 'text-indigo-600',
+    path: '/cab/airport?type=railway_station',
+    accent: 'bg-[linear-gradient(135deg,#EEF2FF_0%,#E0E7FF_100%)]',
+    tag: 'Nearby stations',
+    tagColor: 'bg-indigo-50 text-indigo-600 border-indigo-100',
   },
   {
     id: 'spiritual',
@@ -106,7 +117,11 @@ const CabHome = () => {
             onClick={() => navigate(`${routePrefix}${s.path}`)}
             className="w-full flex items-center gap-4 rounded-[20px] border border-white/80 bg-white/90 shadow-[0_4px_14px_rgba(15,23,42,0.06)] px-4 py-4 text-left">
             <div className={`w-12 h-12 rounded-[16px] flex items-center justify-center shrink-0 overflow-visible ${s.accent}`}>
-              <img src={s.img} alt={s.title} className="w-14 h-14 object-contain drop-shadow-md" />
+              {s.Icon ? (
+                <s.Icon size={26} strokeWidth={2} className={`${s.iconColor || 'text-slate-700'} drop-shadow-sm`} aria-hidden="true" />
+              ) : (
+                <img src={s.img} alt={s.title} className="w-14 h-14 object-contain drop-shadow-md" />
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">

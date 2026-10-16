@@ -9,6 +9,7 @@ import { generateInvoicePDF } from '../../utils/generateInvoicePDF';
 import { GOOGLE_MAPS_API_KEY, useAppGoogleMapsLoader } from '../../../admin/utils/googleMaps';
 import { GoogleMap, MarkerF, PolylineF } from '@react-google-maps/api';
 import { InvoiceTemplate } from '../../components/InvoiceTemplate';
+import { getHubCharges, getHubs, sumHubCharges, hubFeeFor, HubBadge, HubChargeLines } from '../../../shared/components/HubCharges';
 
 const unwrap = (response) => response?.data || response;
 
@@ -90,9 +91,13 @@ const RideDetail = () => {
     const status = String(ride?.status || ride?.liveStatus || 'trip').toLowerCase();
     const rideCode = String(ride?.rideId || ride?._id || ride?.id || id || 'ride');
     
+    // Airport / station lines (optional, see docs/taxi-transit-hubs-contract.md).
+    const hubCharges = getHubCharges(ride);
+    const hubChargesTotal = sumHubCharges(hubCharges);
+
     const baseFare = Number(
       ride?.baseFare ??
-      (ride?.fare ? (ride.fare - (ride.waitingChargeAmount || 0) - (ride.timeChargeAmount || 0) - (ride.distanceChargeAmount || 0) - (ride.additionalCharge || 0) - (ride.adminExtraCharge?.amount || 0)) : null) ??
+      (ride?.fare ? (ride.fare - (ride.waitingChargeAmount || 0) - (ride.timeChargeAmount || 0) - (ride.distanceChargeAmount || 0) - (ride.additionalCharge || 0) - (ride.adminExtraCharge?.amount || 0) - hubChargesTotal) : null) ??
       0
     );
 
@@ -104,7 +109,7 @@ const RideDetail = () => {
     const promoDiscountAmount = Number(ride?.promo?.discount_amount || 0);
     
     // Total should match the fare the user actually paid
-    const totalPaid = Math.ceil(baseFare + waitingChargeAmount + distanceChargeAmount + timeChargeAmount + additionalCharge + adminExtraChargeAmount - promoDiscountAmount);
+    const totalPaid = Math.ceil(baseFare + waitingChargeAmount + distanceChargeAmount + timeChargeAmount + additionalCharge + adminExtraChargeAmount + hubChargesTotal - promoDiscountAmount);
 
     return {
       pickup: pickFirstString(
@@ -125,6 +130,9 @@ const RideDetail = () => {
       timeChargeAmount,
       additionalCharge,
       adminExtraChargeAmount,
+      hubCharges,
+      hubChargesTotal,
+      hubs: getHubs(ride),
       promoDiscountAmount,
       promoCode: ride?.promo?.code || '',
       timeSource,
@@ -377,6 +385,9 @@ const RideDetail = () => {
             </div>
             <h4 className="text-[12px] font-black text-gray-400 uppercase tracking-widest mb-1">Pickup</h4>
             <p className="text-[15px] font-black text-gray-800 leading-tight">{details.pickup}</p>
+            {details.hubs.pickup && (
+              <HubBadge hub={details.hubs.pickup} role="pickup" fee={hubFeeFor(details.hubCharges, 'pickup')} className="mt-1" />
+            )}
             <span className="text-[11px] font-bold text-gray-400 block mt-1">{formatTime(details.startTime)}</span>
           </div>
 
@@ -386,6 +397,9 @@ const RideDetail = () => {
             </div>
             <h4 className="text-[12px] font-black text-gray-400 uppercase tracking-widest mb-1">Drop</h4>
             <p className="text-[15px] font-black text-gray-800 leading-tight">{details.drop}</p>
+            {details.hubs.drop && (
+              <HubBadge hub={details.hubs.drop} role="drop" fee={hubFeeFor(details.hubCharges, 'drop')} className="mt-1" />
+            )}
             <span className="text-[11px] font-bold text-gray-400 block mt-1">{formatTime(details.endTime)}</span>
           </div>
         </div>
@@ -465,6 +479,14 @@ const RideDetail = () => {
                     <span className="text-amber-700">Rs {details.adminExtraChargeAmount.toFixed(2)}</span>
                   </div>
                 )}
+                <HubChargeLines
+                  lines={details.hubCharges}
+                  formatAmount={(amount) => `Rs ${Number(amount).toFixed(2)}`}
+                  rowClassName="flex justify-between items-start gap-3 text-[13px] font-bold text-gray-500"
+                  amountClassName="shrink-0 text-gray-900"
+                  noteClassName="block text-[10px] font-bold text-gray-400"
+                  iconClassName="shrink-0 text-gray-400"
+                />
                 {details.promoDiscountAmount > 0 && (
                   <div className="flex justify-between items-center text-[13px] font-bold text-emerald-600">
                     <span>Promo ({details.promoCode}) Applied</span>
