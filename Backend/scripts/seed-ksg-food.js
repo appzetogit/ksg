@@ -296,6 +296,73 @@ const RESTAURANTS = [
   },
 ];
 
+/**
+ * Demo restaurants in other cities, so customers outside Bhopal see restaurants
+ * too (the listing only shows restaurants within delivery distance). Each one
+ * reuses the menu of a Bhopal restaurant above (`template`) under its own name,
+ * address and location. Only `RESTAURANTS` get dining, banners and costForTwo
+ * defaults from the template.
+ */
+const MP = 'Madhya Pradesh';
+const CITY_RESTAURANTS = [
+  // Indore
+  { phone: '9000000111', name: 'Chappan Biryani Darbar', template: 'Bhopal Biryani House', city: 'Indore', state: MP,
+    address: { addressLine1: 'Shop 7, 56 Dukan, New Palasia', area: '56 Dukan', pincode: '452001', landmark: 'Near 56 Dukan' },
+    at: { lat: 22.7244, lng: 75.8839 }, rating: 4.3, totalRatings: 1620 },
+  { phone: '9000000112', name: 'Annapurna Dosa Corner', template: 'Udupi Tiffin Centre', city: 'Indore', state: MP,
+    address: { addressLine1: '22 Scheme 54, Vijay Nagar', area: 'Vijay Nagar', pincode: '452010', landmark: 'Near Vijay Nagar Square' },
+    at: { lat: 22.7533, lng: 75.8937 }, rating: 4.5, totalRatings: 1290 },
+  { phone: '9000000113', name: 'Wok & Roll Indore', template: 'Dragon Wok', city: 'Indore', state: MP,
+    address: { addressLine1: '3rd Floor, 18 AB Road, Palasia', area: 'Palasia', pincode: '452001', landmark: 'Opposite Palasia Square' },
+    at: { lat: 22.7241, lng: 75.8867 }, rating: 4.2, totalRatings: 980 },
+  { phone: '9000000114', name: 'Rajwada Pizza Co.', template: 'Pizza Junction', city: 'Indore', state: MP,
+    address: { addressLine1: '9 Jawahar Marg, near Rajwada', area: 'Rajwada', pincode: '452002', landmark: 'Near Rajwada Palace' },
+    at: { lat: 22.7186, lng: 75.8553 }, rating: 4.1, totalRatings: 760 },
+  { phone: '9000000115', name: 'Sarafa Sweets & Chaat', template: 'Mithaas Sweets', city: 'Indore', state: MP,
+    address: { addressLine1: '41 Sarafa Bazaar', area: 'Sarafa', pincode: '452002', landmark: 'Sarafa night market' },
+    at: { lat: 22.7178, lng: 75.8547 }, rating: 4.6, totalRatings: 2410 },
+  // Delhi
+  { phone: '9000000116', name: 'Purani Dilli Biryani', template: 'Bhopal Biryani House', city: 'New Delhi', state: 'Delhi',
+    address: { addressLine1: '1120 Chandni Chowk', area: 'Chandni Chowk', pincode: '110006', landmark: 'Near Fatehpuri Masjid' },
+    at: { lat: 28.6506, lng: 77.2303 }, rating: 4.4, totalRatings: 3120 },
+  { phone: '9000000117', name: 'Karol Bagh Dosa House', template: 'Udupi Tiffin Centre', city: 'New Delhi', state: 'Delhi',
+    address: { addressLine1: '14/52 Ajmal Khan Road, Karol Bagh', area: 'Karol Bagh', pincode: '110005', landmark: 'Near Karol Bagh Metro' },
+    at: { lat: 28.6519, lng: 77.1909 }, rating: 4.3, totalRatings: 1870 },
+  { phone: '9000000118', name: 'Connaught Pizza Co.', template: 'Pizza Junction', city: 'New Delhi', state: 'Delhi',
+    address: { addressLine1: 'N-12 Connaught Place', area: 'Connaught Place', pincode: '110001', landmark: 'Inner Circle' },
+    at: { lat: 28.6315, lng: 77.2167 }, rating: 4.2, totalRatings: 1450 },
+  { phone: '9000000119', name: 'Lajpat Ghar Ka Khana', template: 'Ghar Ka Khana Tiffin Service', city: 'New Delhi', state: 'Delhi',
+    address: { addressLine1: 'II-K 21, Lajpat Nagar', area: 'Lajpat Nagar', pincode: '110024', landmark: 'Near Central Market' },
+    at: { lat: 28.5677, lng: 77.2433 }, rating: 4.4, totalRatings: 940 },
+  // Goa
+  { phone: '9000000120', name: 'Panjim Pizza Shack', template: 'Pizza Junction', city: 'Panaji', state: 'Goa',
+    address: { addressLine1: '18 June Road, Panaji', area: 'Panaji', pincode: '403001', landmark: 'Near Church Square' },
+    at: { lat: 15.4989, lng: 73.8278 }, rating: 4.3, totalRatings: 690 },
+  { phone: '9000000121', name: 'Calangute Wok', template: 'Dragon Wok', city: 'Calangute', state: 'Goa',
+    address: { addressLine1: 'Beach Road, Calangute', area: 'Calangute', pincode: '403516', landmark: 'Near Calangute Beach' },
+    at: { lat: 15.5439, lng: 73.7553 }, rating: 4.1, totalRatings: 520 },
+  // Manali
+  { phone: '9000000122', name: 'Mall Road Tiffin House', template: 'Ghar Ka Khana Tiffin Service', city: 'Manali', state: 'Himachal Pradesh',
+    address: { addressLine1: '12 The Mall', area: 'Mall Road', pincode: '175131', landmark: 'Near Manu Market' },
+    at: { lat: 32.2432, lng: 77.1892 }, rating: 4.3, totalRatings: 410 },
+  { phone: '9000000123', name: 'Old Manali Momos & Wok', template: 'Dragon Wok', city: 'Manali', state: 'Himachal Pradesh',
+    address: { addressLine1: 'Manu Temple Road, Old Manali', area: 'Old Manali', pincode: '175131', landmark: 'Near Manu Temple' },
+    at: { lat: 32.2557, lng: 77.1866 }, rating: 4.5, totalRatings: 630 },
+];
+
+/** City restaurants built from their template's menu, hours and price level. */
+const buildCityRestaurants = () =>
+  CITY_RESTAURANTS.map((c) => {
+    const t = RESTAURANTS.find((r) => r.name === c.template);
+    if (!t) throw new Error(`Unknown template "${c.template}" for ${c.name}`);
+    return {
+      ...t,
+      dining: undefined,
+      ...c,
+      ownerName: `Demo Owner - ${c.name}`,
+    };
+  });
+
 const DINING_CATEGORY = { name: 'Family Dining', slug: 'family-dining' };
 
 const OFFERS = [
@@ -418,18 +485,20 @@ async function seedCategories() {
 }
 
 const sellerLocation = (r) => {
-  const line = `${r.address.addressLine1}, ${CITY}, ${STATE} ${r.address.pincode}`;
+  const city = r.city || CITY;
+  const state = r.state || STATE;
+  const line = `${r.address.addressLine1}, ${city}, ${state} ${r.address.pincode}`;
   return {
     type: 'Point',
     coordinates: [r.at.lng, r.at.lat],
     latitude: r.at.lat,
     longitude: r.at.lng,
     formattedAddress: line,
-    address: `${r.address.addressLine1}, ${CITY}`,
+    address: `${r.address.addressLine1}, ${city}`,
     addressLine1: r.address.addressLine1,
     area: r.address.area,
-    city: CITY,
-    state: STATE,
+    city,
+    state,
     pincode: r.address.pincode,
     landmark: r.address.landmark,
   };
@@ -456,8 +525,8 @@ async function seedRestaurant(r, { foodZone, categories }) {
       cuisines: r.cuisines,
       addressLine1: r.address.addressLine1,
       area: r.address.area,
-      city: CITY,
-      state: STATE,
+      city: r.city || CITY,
+      state: r.state || STATE,
       pincode: r.address.pincode,
       landmark: r.address.landmark,
       openingTime: r.open,
@@ -687,6 +756,12 @@ const run = async () => {
     const result = await seedRestaurant(r, { foodZone, categories });
     if (result) seeded.set(r.name, result.restaurant);
     logins.push([r.phone, r.name, result ? `${result.dishCount} dishes` : 'SKIPPED (phone taken)']);
+  }
+
+  console.log('\n[2b] Restaurants in other cities (menus from the Bhopal templates)');
+  for (const r of buildCityRestaurants()) {
+    const result = await seedRestaurant(r, { foodZone, categories });
+    logins.push([r.phone, `${r.name} (${r.city})`, result ? `${result.dishCount} dishes` : 'SKIPPED (phone taken)']);
   }
 
   await seedDining(seeded);
