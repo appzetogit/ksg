@@ -95,6 +95,11 @@ const resolveDriverLoginOtpForPhone = (phone) => {
   // on the live system whenever STATIC_OTP_PHONE was unset, which is the
   // default, and USE_DEFAULT_OTP gave every driver the static code. Production
   // always gets a random OTP now -- the same rule the customer flow follows.
+  // Production: only with the explicit ALLOW_INSECURE_DEFAULT_OTP=true acknowledgement
+  // master's validateEnv requires, so mock OTP is on everywhere or nowhere.
+  if (defaultOtpEnabled && process.env.ALLOW_INSECURE_DEFAULT_OTP === 'true' && process.env.NODE_ENV === 'production') {
+    return { otp: '1234', isStatic: true };
+  }
   if (process.env.NODE_ENV !== 'production') {
     if (defaultOtpEnabled && staticOtpConfig.otp) {
       return {

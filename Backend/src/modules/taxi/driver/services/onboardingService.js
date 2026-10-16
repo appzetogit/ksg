@@ -259,6 +259,11 @@ const resolveDriverOnboardingOtpForPhone = (phone) => {
       isStatic: true,
     };
   }
+  // Production mock OTP, only with the explicit ALLOW_INSECURE_DEFAULT_OTP=true
+  // acknowledgement master's validateEnv requires: the same 1234 every app uses.
+  if (defaultOtpEnabled && process.env.ALLOW_INSECURE_DEFAULT_OTP === 'true' && process.env.NODE_ENV === 'production') {
+    return { otp: '1234', isStatic: true };
+  }
 
   if (staticOtpConfig.phone && staticOtpConfig.otp && normalizedPhone === staticOtpConfig.phone) {
     return {

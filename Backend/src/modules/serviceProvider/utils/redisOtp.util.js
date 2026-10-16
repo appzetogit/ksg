@@ -34,8 +34,11 @@ const TEST_PHONES = (process.env.TEST_OTP_PHONE || '')
 const STATIC_TEST_OTP = process.env.TEST_OTP_CODE || '123456';
 
 const testOtpAllowed = () => process.env.ALLOW_TEST_OTP === 'true';
+// In production only with the explicit acknowledgement master's validateEnv demands
+// (ALLOW_INSECURE_DEFAULT_OTP=true), so mock OTP is on in every app or in none.
 const defaultOtpForEveryone = () =>
-  process.env.USE_DEFAULT_OTP === 'true' && process.env.NODE_ENV !== 'production';
+  process.env.USE_DEFAULT_OTP === 'true'
+  && (process.env.NODE_ENV !== 'production' || process.env.ALLOW_INSECURE_DEFAULT_OTP === 'true');
 
 const isStaticOtpPhone = (cleanPhone) =>
   (testOtpAllowed() && TEST_PHONES.includes(cleanPhone)) || defaultOtpForEveryone();

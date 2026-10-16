@@ -44,6 +44,13 @@ const resolveUserOtpForPhone = (phone) => {
   // TEST_LOGIN_OTP_PHONE / TEST_LOGIN_OTP_CODE fallbacks above ('7610416911' / '0000')
   // applied on the live system whenever STATIC_OTP_PHONE was left unset -- and it is
   // unset by default. Production always gets a random OTP now.
+  // In production the static code applies only with the same explicit
+  // acknowledgement master's validateEnv demands (ALLOW_INSECURE_DEFAULT_OTP=true),
+  // so mock OTP is on everywhere or nowhere, and never by accident.
+  const insecureDefaultAcknowledged = process.env.ALLOW_INSECURE_DEFAULT_OTP === 'true';
+  if (defaultOtpEnabled && insecureDefaultAcknowledged && process.env.NODE_ENV === 'production') {
+    return { otp: '1234', isStatic: true };
+  }
   if (process.env.NODE_ENV !== 'production') {
     if (defaultOtpEnabled && staticOtpConfig.otp) {
       return {
