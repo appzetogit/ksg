@@ -838,7 +838,7 @@ const AdminLayout = () => {
             subItems: [
               { label: 'Service Location', path: '/taxi/admin/pricing/service-location', permission: 'service_locations.view' },
               { label: 'Zone', path: '/taxi/admin/pricing/zone', permission: 'zones.view' },
-              { label: 'Airport', path: '/taxi/admin/pricing/airport', permission: 'airports.view' },
+              { label: 'Airports & Stations', path: '/taxi/admin/pricing/airport', permission: 'airports.view' },
               { label: 'App Modules', path: '/taxi/admin/pricing/app-modules', permission: 'settings.view' },
               { label: 'Vehicle Type', path: '/taxi/admin/pricing/vehicle-type', permission: 'vehicle_types.view' },
               // Rental is intentionally hidden from the admin sidebar (not removed).
