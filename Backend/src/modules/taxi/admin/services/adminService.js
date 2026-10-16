@@ -12,7 +12,15 @@ import { AdminAppSetting } from '../models/AdminAppSetting.js';
 // AppModule import removed
 import { createDefaultBusinessSettings } from '../data/defaultBusinessSettings.js';
 import { createDefaultAppSettings } from '../data/defaultAppSettings.js';
-import { Airport } from '../models/Airport.js';
+import { Airport, HUB_TYPES } from '../models/Airport.js';
+import {
+  effectiveHubCharges,
+  resolveHubCharges,
+  sumHubLines,
+  validateBoundaryInput,
+  validateHubChargesInput,
+} from '../../common/transitHubCharges.js';
+import { invalidateHubCache } from '../../services/transitHubs.service.js';
 import { BusService } from '../models/BusService.js';
 import { DriverNeededDocument } from '../models/DriverNeededDocument.js';
 import { GoodsType } from '../models/GoodsType.js';
@@ -1594,7 +1602,6 @@ const normalizeZoneGeometryPayload = (payload = {}, existing = {}) => {
   };
 };
 
-const normalizeAirportBoundary = (coordinates = []) => normalizeZoneCoordinates(coordinates);
 
 const normalizePointLocationPayload = (payload = {}, fallback = {}) => {
   const latitude = Number(payload.latitude ?? payload.lat ?? fallback.latitude);
@@ -2225,9 +2232,21 @@ const serializeAirport = (item) => ({
   contact_number: item.contact_number || '',
   latitude: item.latitude,
   longitude: item.longitude,
+  hub_type: item.hub_type || 'airport',
+  radius_meters: Number(item.radius_meters ?? 500),
+  boundary: item.boundary?.type === 'Polygon' && Array.isArray(item.boundary?.coordinates?.[0])
+    ? { type: 'Polygon', coordinates: item.boundary.coordinates }
+    : null,
   boundary_coordinates: Array.isArray(item.boundary?.coordinates?.[0])
     ? item.boundary.coordinates[0].map(([lng, lat]) => ({ lat: Number(lat), lng: Number(lng) }))
     : [],
+  // The charges in force: a row from before `charges` existed is shown through
+  // its legacy fee / surge (charges_source 'legacy').
+  charges: (() => {
+    const { legacy, ...charges } = effectiveHubCharges(item);
+    return charges;
+  })(),
+  charges_source: item.charges ? 'charges' : 'legacy',
   airport_surge: Number(item.airport_surge ?? 0),
   support_airport_fee: Number(item.support_airport_fee ?? 0),
   status: item.status || (item.active === false ? 'inactive' : 'active'),
@@ -5616,6 +5635,9 @@ const toAdminRideRow = (ride) => {
     fare: Number(ride.fare || 0),
     baseFare: Number(ride.baseFare || ride.fare || 0),
     waitingChargeAmount: Number(ride.waitingChargeAmount || 0),
+    hubCharges: Array.isArray(ride.hubCharges) ? ride.hubCharges : [],
+    hubPassThroughTotal: Number(ride.hubPassThroughTotal || 0),
+    hubs: ride.hubs || {},
     distanceChargeAmount: Number(ride.distanceChargeAmount || 0),
     timeChargeAmount: Number(ride.timeChargeAmount || 0),
     pickupLabel: formatRidePointLabel(ride.pickupLocation, 'Pickup'),
@@ -8308,18 +8330,160 @@ export const createZone = async (payload, currentAdmin = null) => {
   };
 
 
-  export const listAirports = async (currentAdmin = null) => {
+  /*
+   * Transit hubs (airports, railway stations, bus stands) -- one model, the
+   * admin path is still /admin/airports. docs/taxi-transit-hubs-contract.md.
+   * Without page/limit every hub is returned, as the old airport page expects.
+   */
+  export const listAirports = async (currentAdmin = null, options = {}) => {
     if (currentAdmin) {
       assertAdminPermission(currentAdmin, 'airports.view', 'airports');
     }
-    const query = currentAdmin ? buildServiceLocationScopeQuery(currentAdmin) : {};
-    const items = await Airport.find(query)
+    const query = currentAdmin ? { ...buildServiceLocationScopeQuery(currentAdmin) } : {};
+    const type = String(options.type || '').trim();
+    if (type) {
+      if (!HUB_TYPES.includes(type)) throw new ApiError(400, `type must be one of ${HUB_TYPES.join(', ')}`);
+      // Rows from before hub_type existed are airports.
+      query.$and = [...(query.$and || []), type === 'airport'
+        ? { $or: [{ hub_type: 'airport' }, { hub_type: { $exists: false } }] }
+        : { hub_type: type }];
+    }
+    const q = String(options.q || '').trim();
+    if (q) {
+      const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      query.$and = [...(query.$and || []), { $or: [{ name: rx }, { code: rx }, { address: rx }, { terminal: rx }] }];
+    }
+    const paged = options.page !== undefined || options.limit !== undefined;
+    const limit = paged ? Math.min(1000, Math.max(1, Number(options.limit) || 20)) : null;
+    const page = paged ? Math.max(1, Number(options.page) || 1) : 1;
+    const finder = Airport.find(query)
       .populate('service_location_id', 'name service_location_name country')
       .populate('zone_id', 'name')
-      .sort({ createdAt: -1 })
-      .lean();
+      .sort({ createdAt: -1 });
+    if (paged) finder.skip((page - 1) * limit).limit(limit);
+    const [items, total] = await Promise.all([finder.lean(), Airport.countDocuments(query)]);
 
-    return items.map(serializeAirport);
+    return {
+      items: items.map(serializeAirport),
+      total,
+      page,
+      limit: limit ?? total,
+    };
+  };
+
+  const isValidObjectIdString = (value) => mongoose.Types.ObjectId.isValid(String(value));
+
+  export const getAirport = async (id, currentAdmin = null) => {
+    if (!isValidObjectIdString(id)) throw new ApiError(404, 'Airport not found');
+    const item = await Airport.findById(id)
+      .populate('service_location_id', 'name service_location_name country')
+      .populate('zone_id', 'name')
+      .lean();
+    if (!item) throw new ApiError(404, 'Airport not found');
+    if (currentAdmin) {
+      assertAdminPermission(currentAdmin, 'airports.view', 'airports');
+      assertServiceLocationAccess(currentAdmin, item.service_location_id?._id || item.service_location_id);
+    }
+    return serializeAirport(item);
+  };
+
+  const normalizeHubType = (value) => {
+    if (value === undefined || value === null || value === '') return 'airport';
+    const type = String(value).trim();
+    if (!HUB_TYPES.includes(type)) throw new ApiError(400, `hub_type must be one of ${HUB_TYPES.join(', ')}`);
+    return type;
+  };
+
+  const normalizeRadiusMeters = (value) => {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0 || n > 20000) throw new ApiError(400, 'radius_meters must be between 0 and 20000');
+    return Math.round(n);
+  };
+
+  const normalizeHubChargesPayload = (charges) => {
+    try {
+      return validateHubChargesInput(charges, { isValidId: isValidObjectIdString });
+    } catch (err) {
+      throw new ApiError(err.statusCode || 400, err.message);
+    }
+  };
+
+  // The boundary from `boundary` (GeoJSON) or the old page's `boundary_coordinates`.
+  // Returns undefined when neither is sent, null to clear it.
+  const normalizeHubBoundaryPayload = (payload) => {
+    const raw = payload.boundary !== undefined ? payload.boundary : payload.boundary_coordinates;
+    if (raw === undefined) return undefined;
+    if (raw === null || (Array.isArray(raw) && raw.length === 0)) return null;
+    try {
+      return validateBoundaryInput(raw);
+    } catch (err) {
+      throw new ApiError(err.statusCode || 400, err.message);
+    }
+  };
+
+  const nonNegativeAmount = (value, field) => {
+    const n = Number(value ?? 0);
+    if (!Number.isFinite(n) || n < 0) throw new ApiError(400, `${field} must be a number >= 0`);
+    return n;
+  };
+
+  // The legacy fields stay in step with `charges`, so anything still reading
+  // them sees the same airport fee / surge.
+  const mirrorLegacyHubFields = (target, charges) => {
+    const allTypes = (charges.pickup_fee || []).find((entry) => !entry.vehicle_type_id);
+    target.support_airport_fee = Number(allTypes?.amount || 0);
+    target.airport_surge = Number(charges.surge?.percent || 0);
+  };
+
+  const saveHub = async (doc) => {
+    try {
+      await doc.save();
+    } catch (err) {
+      // 2dsphere refuses a self-intersecting or otherwise invalid polygon.
+      if (err?.code === 16755 || /geo keys|Loop is not valid|Edges .* cross/i.test(String(err?.message || ''))) {
+        throw new ApiError(400, 'boundary is not a valid polygon (edges must not cross)');
+      }
+      throw err;
+    }
+    invalidateHubCache();
+  };
+
+  /*
+   * POST /admin/airports/:id/preview -- the admin's calculator: what this hub
+   * charges a vehicle type at a moment, as pickup or drop.
+   */
+  export const previewAirportCharges = async (id, payload = {}, currentAdmin = null) => {
+    if (!isValidObjectIdString(id)) throw new ApiError(404, 'Airport not found');
+    const item = await Airport.findById(id).lean();
+    if (!item) throw new ApiError(404, 'Airport not found');
+    if (currentAdmin) {
+      assertAdminPermission(currentAdmin, 'airports.view', 'airports');
+      assertServiceLocationAccess(currentAdmin, item.service_location_id);
+    }
+    const role = String(payload.role || 'pickup').trim().toLowerCase();
+    if (!['pickup', 'drop'].includes(role)) throw new ApiError(400, "role must be 'pickup' or 'drop'");
+    const vehicleTypeId = payload.vehicle_type_id ? String(payload.vehicle_type_id) : null;
+    if (vehicleTypeId && !isValidObjectIdString(vehicleTypeId)) throw new ApiError(400, 'vehicle_type_id is invalid');
+    const at = payload.at ? new Date(payload.at) : new Date();
+    if (Number.isNaN(at.getTime())) throw new ApiError(400, 'at must be an ISO date-time');
+    const waiting = payload.waiting_minutes === undefined || payload.waiting_minutes === null || payload.waiting_minutes === ''
+      ? null
+      : nonNegativeAmount(payload.waiting_minutes, 'waiting_minutes');
+    const fare = nonNegativeAmount(payload.fare ?? 0, 'fare');
+    const lines = resolveHubCharges({
+      pickupHub: role === 'pickup' ? item : null,
+      dropHub: role === 'drop' ? item : null,
+      vehicleTypeId,
+      at,
+      waitingMinutes: waiting,
+      fareBeforeSurge: fare,
+    });
+    return {
+      lines,
+      hubCharges: lines,
+      total: sumHubLines(lines),
+      passThroughTotal: sumHubLines(lines, { passThrough: true }),
+    };
   };
 
   export const createAirport = async (payload, currentAdmin = null) => {
@@ -8341,10 +8505,22 @@ export const createZone = async (payload, currentAdmin = null) => {
     const latitude = toNullableNumber(payload.latitude);
     const longitude = toNullableNumber(payload.longitude);
     const status = payload.status || (normalizeBoolean(payload.active ?? true) ? 'active' : 'inactive');
+    const boundary = normalizeHubBoundaryPayload(payload);
+    const charges = payload.charges !== undefined && payload.charges !== null
+      ? normalizeHubChargesPayload(payload.charges)
+      : undefined;
+    const legacy = {
+      airport_surge: nonNegativeAmount(payload.airport_surge, 'airport_surge'),
+      support_airport_fee: nonNegativeAmount(payload.support_airport_fee, 'support_airport_fee'),
+    };
+    if (charges) mirrorLegacyHubFields(legacy, charges);
 
-    const item = await Airport.create({
+    const item = new Airport({
       name: String(payload.name).trim(),
       code: String(payload.code || '').trim().toUpperCase(),
+      hub_type: normalizeHubType(payload.hub_type),
+      radius_meters: payload.radius_meters === undefined ? 500 : normalizeRadiusMeters(payload.radius_meters),
+      charges,
       service_location_id: toObjectId(payload.service_location_id),
       zone_id: payload.zone_id ? toObjectId(payload.zone_id) : null,
       terminal: String(payload.terminal || '').trim(),
@@ -8359,18 +8535,12 @@ export const createZone = async (payload, currentAdmin = null) => {
             coordinates: [longitude, latitude],
           }
           : undefined,
-      boundary:
-        Array.isArray(payload.boundary_coordinates) && payload.boundary_coordinates.length >= 3
-          ? {
-            type: 'Polygon',
-            coordinates: [normalizeAirportBoundary(payload.boundary_coordinates)],
-          }
-          : undefined,
-      airport_surge: Math.max(0, Number(payload.airport_surge ?? 0) || 0),
-      support_airport_fee: Math.max(0, Number(payload.support_airport_fee ?? 0) || 0),
+      boundary: boundary || undefined,
+      ...legacy,
       status,
       active: status === 'active',
     });
+    await saveHub(item);
 
     const populatedItem = await Airport.findById(item._id)
       .populate('service_location_id', 'name service_location_name country')
@@ -8425,20 +8595,42 @@ export const createZone = async (payload, currentAdmin = null) => {
       item.status = payload.status || (normalizeBoolean(payload.active) ? 'active' : 'inactive');
       item.active = item.status === 'active';
     }
-    if (payload.boundary_coordinates !== undefined) {
-      item.boundary =
-        Array.isArray(payload.boundary_coordinates) && payload.boundary_coordinates.length >= 3
-          ? {
-            type: 'Polygon',
-            coordinates: [normalizeAirportBoundary(payload.boundary_coordinates)],
-          }
-          : undefined;
+    const boundary = normalizeHubBoundaryPayload(payload);
+    if (boundary !== undefined) {
+      item.boundary = boundary || undefined;
     }
-    if (payload.airport_surge !== undefined) {
-      item.airport_surge = Math.max(0, Number(payload.airport_surge ?? 0) || 0);
+    if (payload.hub_type !== undefined) {
+      item.hub_type = normalizeHubType(payload.hub_type);
     }
-    if (payload.support_airport_fee !== undefined) {
-      item.support_airport_fee = Math.max(0, Number(payload.support_airport_fee ?? 0) || 0);
+    if (payload.radius_meters !== undefined) {
+      item.radius_meters = normalizeRadiusMeters(payload.radius_meters);
+    }
+    if (payload.charges !== undefined) {
+      if (payload.charges === null) {
+        // Back to the legacy fields alone.
+        item.charges = undefined;
+      } else {
+        const charges = normalizeHubChargesPayload(payload.charges);
+        item.charges = charges;
+        mirrorLegacyHubFields(item, charges);
+      }
+    }
+    // When `charges` is sent it wins: the legacy fields were mirrored from it above.
+    const chargesSent = payload.charges !== undefined && payload.charges !== null;
+    if (payload.airport_surge !== undefined && !chargesSent) {
+      item.airport_surge = nonNegativeAmount(payload.airport_surge, 'airport_surge');
+      // The old page edits only the legacy fields; keep a hub's charges in step.
+      if (payload.charges === undefined && item.charges) item.set('charges.surge.percent', item.airport_surge);
+    }
+    if (payload.support_airport_fee !== undefined && !chargesSent) {
+      item.support_airport_fee = nonNegativeAmount(payload.support_airport_fee, 'support_airport_fee');
+      if (payload.charges === undefined && item.charges) {
+        const list = (item.charges.pickup_fee || []).map((e) => ({ vehicle_type_id: e.vehicle_type_id || null, amount: e.amount }));
+        const others = list.filter((e) => e.vehicle_type_id);
+        item.set('charges.pickup_fee', item.support_airport_fee > 0
+          ? [...others, { vehicle_type_id: null, amount: item.support_airport_fee }]
+          : others);
+      }
     }
 
     item.location =
@@ -8449,7 +8641,7 @@ export const createZone = async (payload, currentAdmin = null) => {
         }
         : undefined;
 
-    await item.save();
+    await saveHub(item);
 
     const populatedItem = await Airport.findById(item._id)
       .populate('service_location_id', 'name service_location_name country')
@@ -8468,6 +8660,7 @@ export const createZone = async (payload, currentAdmin = null) => {
     }
     const item = await Airport.findByIdAndDelete(id);
     if (!item) throw new ApiError(404, 'Airport not found');
+    invalidateHubCache();
     return true;
   };
 

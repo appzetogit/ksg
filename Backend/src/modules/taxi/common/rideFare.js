@@ -14,6 +14,14 @@
  *   - Service tax on that subtotal, then the platform fee on top, untaxed.
  *   - Rounded to a whole rupee, then the zone's surge added.
  *
+ * Transit-hub charges (common/transitHubCharges.js), when given as hubCharges:
+ *   - a hub surge line (passThrough false) is folded into the surge;
+ *   - pass-through lines (pickup / drop fee, parking) are added AFTER tax,
+ *     the platform fee and rounding: untaxed, no platform fee. The driver keeps
+ *     them in full (driver/services/walletService.js).
+ *   The result gains hubCharges, hubSurge and hubPassThroughTotal, and total
+ *   is fareBeforeSurge + surge + hubPassThroughTotal.
+ *
  * Returns null when there is nothing to charge from: no row, or a row whose
  * prices are all zero. A caller must refuse the ride then -- never fall back to
  * a figure the app sent.
@@ -32,6 +40,8 @@ export function computeRideFare({
     // slot). It is part of the subtotal, so tax and the platform fee apply to it
     // exactly as they do to the base.
     extraAmount = 0,
+    // Transit-hub lines (common/transitHubCharges.js resolveHubCharges).
+    hubCharges = null,
 } = {}) {
     if (!pricingRule) return null;
 
@@ -58,7 +68,10 @@ export function computeRideFare({
     const serviceTax = (subtotal * serviceTaxPercent) / 100;
     const platformFee = resolvePlatformFee(pricingRule, subtotal);
     const fareBeforeSurge = Math.max(0, Math.round(subtotal + serviceTax + platformFee));
-    const surge = money(Math.max(0, Number(surgeAmount) || 0));
+    const hubLines = Array.isArray(hubCharges) ? hubCharges.map((line) => ({ ...line, amount: money(Math.max(0, Number(line?.amount) || 0)) })) : [];
+    const hubSurge = money(hubLines.filter((l) => !l.passThrough).reduce((sum, l) => sum + l.amount, 0));
+    const hubPassThroughTotal = money(hubLines.filter((l) => l.passThrough).reduce((sum, l) => sum + l.amount, 0));
+    const surge = money(Math.max(0, Number(surgeAmount) || 0) + hubSurge);
 
     const lines = {
         baseFare: money(basePrice),
@@ -79,6 +92,9 @@ export function computeRideFare({
         roundOff: money(fareBeforeSurge - printed),
         fareBeforeSurge,
         surge,
-        total: money(fareBeforeSurge + surge),
+        total: money(fareBeforeSurge + surge + hubPassThroughTotal),
+        hubCharges: hubLines,
+        hubSurge,
+        hubPassThroughTotal,
     };
 }

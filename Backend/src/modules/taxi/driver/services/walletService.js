@@ -472,7 +472,19 @@ export const settleCompletedRideWallet = async ({ rideId }) => {
     const grossFare = Math.max(0, normalizeAmount(fare - recoveredDue - insuranceFee + promoDiscountAmount, 'grossFare'));
 
     const surgeAmount = Math.max(0, normalizeAmount(ride?.pricingSnapshot?.ride_surge_amount || 0, 'surgeAmount'));
-    const commissionableFare = Math.max(0, normalizeAmount(grossFare - surgeAmount, 'commissionableFare'));
+    /*
+     * Airport / railway-station fees and parking (docs/taxi-transit-hubs-contract.md):
+     * pass-through. They are in `fare` and so in grossFare, which the driver is
+     * settled on -- but no commission is taken on them and no incentive is paid
+     * on them. Net effect: driverEarnings includes them in full. Cash: he holds
+     * them (in `fare`), so his wallet is not debited for them. Online: they are
+     * part of the earnings credited to him.
+     */
+    const hubPassThrough = Math.min(
+      grossFare,
+      Math.max(0, normalizeAmount(ride.hubPassThroughTotal || 0, 'hubPassThrough')),
+    );
+    const commissionableFare = Math.max(0, normalizeAmount(grossFare - surgeAmount - hubPassThrough, 'commissionableFare'));
     const commissionConfig = await resolveCommissionConfigForRide(ride, session);
     const commissionAmount = computeCommissionAmount({
       fare: commissionableFare,
@@ -504,9 +516,10 @@ export const settleCompletedRideWallet = async ({ rideId }) => {
         const { taxiZoneIdOfRide } = await import('../../../../core/zones/taxiZone.js');
         // The pickup's zone: a zone's own incentive beats taxi's and the global one.
         const rule = await resolveIncentive({ vertical: 'taxi', zoneId: await taxiZoneIdOfRide(ride), legacy: null });
-        if (rule.isEnabled && rule.incentivePercent > 0 && grossFare >= rule.minOrderAmount) {
+        const incentiveBase = Math.max(0, grossFare - hubPassThrough);
+        if (rule.isEnabled && rule.incentivePercent > 0 && incentiveBase >= rule.minOrderAmount) {
             incentiveAmount = normalizeAmount(
-                Math.round(grossFare * (rule.incentivePercent / 100) * 100) / 100,
+                Math.round(incentiveBase * (rule.incentivePercent / 100) * 100) / 100,
                 'incentiveAmount',
             );
         }
@@ -582,6 +595,7 @@ export const settleCompletedRideWallet = async ({ rideId }) => {
         promoFundedBy: 'platform',
         cashCollected: paymentMethod === 'cash' ? fare : 0,
         surgeAmount,
+        hubPassThrough,
         commissionableFare,
         commissionAmount,
         driverEarnings,

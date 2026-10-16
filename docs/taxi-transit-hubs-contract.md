@@ -85,3 +85,89 @@ The existing total includes them. Driver earning for the ride = existing earning
 | POST | `/admin/airports/:id/preview` | body `{ vehicle_type_id, role: 'pickup'\|'drop', at?: ISODateTime, waiting_minutes? }` → `{ lines: hubCharges, total }` (admin calculator) |
 | GET | `/common/transit-hubs?lat&lng&type&radiusKm` | public: active hubs near a point `{ items: [{ id, name, code, type, latitude, longitude, address, distanceKm }] }` (rider shortcuts: "Airport", "Railway station") |
 | existing | ride quote / create / complete | gain `hubCharges` and `hubs` as above |
+
+## Deviations and clarifications (backend, as built)
+
+Code: `common/transitHubCharges.js` (pure maths + admin input validation),
+`services/transitHubs.service.js` (hub lookup, 45 s cache, public list),
+`common/rideFare.js` (`hubCharges` input), `services/rideService.js` (quote, booking,
+lifecycle), `driver/services/walletService.js` (settlement). Checks:
+`common/__checks__/transitHubs.check.js`; smoke: `Backend/tests/taxi-hubs.smoke.mjs`
+(`npm run test:taxi-hubs`). Seed: `Backend/scripts/seed-taxi-hubs.js`.
+
+- **Estimated parking**: before completion a pickup hub with parking enabled always
+  has a `hub_parking` line with `amount: 0, estimated: true` (quote, booking, ride
+  until the trip starts). When the trip starts and again at completion it is
+  recomputed from the real wait (`arrivedAt` → `startedAt`, rounded up to the minute)
+  and becomes `estimated: false`; a recomputed parking of ₹0 removes the line.
+  `arrivedAt` is only stamped when the driver is within 500 m of the pickup, so a
+  driver who never reached the pickup bills no parking.
+- **`extra_flat` only on a non-zero charge**: `round(amount × multiplier + extra_flat)`
+  is applied only when the base amount is > 0 (a ₹0 drop fee stays ₹0 at night;
+  parking with no billable block stays ₹0). Not literally the formula above.
+- **Parking cap**: `max_amount: null` (or 0) = no cap. To make parking free, disable it.
+- **Time windows crossing midnight** belong to the day they start on: a Friday-only
+  22:00–06:00 window covers Saturday 02:00. `start === end` = the whole day. Times and
+  special dates are IST. Windows scale pickup/drop fees and parking, not the hub surge.
+- **When fees are priced**: pickup/drop fees and the hub surge are priced at booking
+  (at `scheduledAt` for a scheduled ride, else booking time) and frozen; the quote
+  prices at "now". Parking uses the modifier at `arrivedAt`. All of it comes from a
+  snapshot of the hub stored on the ride (`ride.hubSnapshot`), so admin edits after
+  booking do not change the ride.
+- **Hub surge**: `round(fareBeforeSurge × percent / 100 + flat)`, once per hub (a ride
+  from a hub back to the same hub pays it once); folded into the ride's surge
+  (`pricingSnapshot.ride_surge_amount`, `fare.surge`), so it is treated exactly like
+  zone surge (no commission on it, as before for surge).
+- **`ride.fare` and the other fare parts**: `ride.fare` (the total) includes
+  `hubPassThroughTotal` at every stage (booking, boosts, accepted bids, completion).
+  `baseFare`, `pricingSnapshot.agreed_fare`, `waitingChargeAmount`, `additionalCharge`,
+  bid/boost ranges (`bidFloorFare`, `userMaxBidFare`, `bidCeilingMaxFare`), the promo
+  and insurance premium are all **without** the hub fees. New ride fields:
+  `hubCharges`, `hubs`, `hubPassThroughTotal` (Σ passThrough lines, = what `fare`
+  carries on top). A percentage cancellation fee is taken on the fare without them.
+- **Quote**: each per-vehicle quote item has `hubCharges` and `hubs` at the top level;
+  `fare` additionally has `hubCharges`, `hubSurge`, `hubPassThroughTotal`, and
+  `fare.total` includes the pass-through. `hubs` is `{}` when no hub applies.
+- **Where hub fields are returned**: `serializeRideRealtime` (GET `/rides/:id`, active
+  ride, socket `ride:state`, ride status updates), ride history items, driver incoming
+  request (dispatch payload), driver scheduled rides, socket status-updated payloads,
+  admin ride detail.
+- **Driver earnings**: `driverEarnings` = (fare − hub pass-through) − commission +
+  incentive + hub pass-through. No commission and no platform incentive on the
+  pass-through. Cash: the driver collects `fare` (incl. fees); his wallet moves by
+  `driverEarnings − fare` = −commission (fees are not debited). Online: the full
+  `driverEarnings` (incl. fees) is credited when the payment is confirmed.
+- **Not applied to**: parcels (`transport_type: 'delivery'`) and instant pool rides
+  (they complete through `instantPoolingService` and are not booked through
+  `createRideRecord`). A subscription-covered ride still carries hub fees in `fare`
+  but the subscription collection amount is the ride fare only (existing waiting /
+  insurance charges behave the same way).
+- **Hub matching**: active hub (`status: 'active'`, `active !== false`) whose boundary
+  contains the point; else, among hubs **without** a boundary, the nearest within its
+  own `radius_meters` (searched up to 5 km). Cached 45 s per ~10 m cell per server
+  process; admin writes clear the cache on the process that served them, so on a
+  multi-instance deployment an edit can take up to 45 s to apply everywhere.
+- **Admin API**:
+  - `GET /admin/airports` without `page`/`limit` returns every hub (old page); the
+    response `data` has `airports` and `items` (same list) plus `total`, `page`,
+    `limit` (`limit` capped at 1000). `type=airport` also matches old rows with no
+    `hub_type`. Added `GET /admin/airports/:id`.
+  - Hub responses also carry `boundary_coordinates: [{lat,lng}]` (old page),
+    `charges_source: 'charges'|'legacy'`, and `charges` is always the effective
+    charges (a legacy row is shown mapped from `support_airport_fee` / `airport_surge`).
+  - Writes accept `boundary` (GeoJSON) or `boundary_coordinates`; `boundary` wins. An
+    open ring is closed; fewer than 3 distinct points, out-of-range coordinates or a
+    self-intersecting polygon → 400. `boundary: null` (or `[]`) clears it.
+  - When `charges` is sent it wins over `airport_surge` / `support_airport_fee`, which
+    are then mirrored from it (surge.percent, the all-types pickup fee). Sending only
+    the legacy fields to a hub that has `charges` updates those two parts of `charges`.
+    `charges: null` drops back to the legacy fields.
+  - Validation: amounts, multipliers, minutes ≥ 0; `HH:mm` (two-digit hour); days 0–6;
+    dates `YYYY-MM-DD`; one fee row per vehicle type; parking `block_minutes > 0` when
+    enabled; `hub_type` in the enum; `radius_meters` 0–20000.
+  - Preview also accepts `fare` (fare before surge, default 0) for the hub-surge percent,
+    and returns `hubCharges` (same as `lines`) and `passThroughTotal`.
+- **Public endpoint**: `radiusKm` default 25, max 200; at most 20 items (`limit` up to
+  50); missing/invalid `lat`/`lng` or unknown `type` → 400.
+- **Seed**: Delhi IGI is two hubs (code `DEL`, "T3" and "T1"), since one modest box
+  cannot cover terminals 2 km apart.

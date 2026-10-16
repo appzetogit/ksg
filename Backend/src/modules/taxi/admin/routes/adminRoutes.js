@@ -6,6 +6,8 @@ import {
   approveOwner,
   approveOwnerSignupFromDriver,
   createAirport,
+  previewAirport,
+  getAirportById,
   createAdminAccount,
   createAdminBusBooking,
   createBusService,
@@ -361,6 +363,8 @@ adminRouter.patch('/admin/types/surge-slots/:id', updateSurgeSlot);
 adminRouter.delete('/admin/types/surge-slots/:id', deleteSurgeSlot);
 adminRouter.get('/admin/airports', getAirports);
 adminRouter.post('/admin/airports', createAirport);
+adminRouter.get('/admin/airports/:id', getAirportById);
+adminRouter.post('/admin/airports/:id/preview', previewAirport);
 adminRouter.patch('/admin/airports/:id', updateAirport);
 adminRouter.delete('/admin/airports/:id', deleteAirport);
 adminRouter.get('/admin/bus-services', getBusServices);

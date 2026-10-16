@@ -68,4 +68,19 @@ f = fare(bike, 'abc', -5);
 assert.equal(f.total, 26);
 assert.ok(Number.isFinite(fare(bike, 4000, 'x').total));
 
+// --- transit-hub lines (full checks: transitHubs.check.js) -------------------
+// A Rs 100 airport pickup fee is added after tax, the platform fee and the
+// rounding; a Rs 15 hub surge joins the surge.
+f = computeRideFare({
+    pricingRule: suv, distanceMeters: 4095.7789703255994, durationMinutes: 9.829869528781439,
+    hubCharges: [
+        { code: 'hub_pickup_fee', amount: 100, passThrough: true },
+        { code: 'hub_surge', amount: 15, passThrough: false },
+    ],
+});
+assert.equal(f.fareBeforeSurge, 189);
+assert.equal(f.surge, 15);
+assert.equal(f.hubPassThroughTotal, 100);
+assert.equal(f.total, 304);
+
 console.log('All ride-fare checks passed.');
