@@ -59,6 +59,8 @@ import quickSpicyLogo from "@food/assets/ksg-logo.png";
 import { getCachedSettings, loadBusinessSettings, normalizeCompanyName } from "@food/utils/businessSettings";
 import { refreshAdminAccess, useAdminAccess, hasPanel, isRestricted, canOpenPath } from "@food/utils/adminAccess";
 import { SERVICE_PROVIDER_ENABLED, HOTEL_ENABLED } from "@/config/features";
+import { SidebarStyles, SidebarHeader, PanelSwitcher, SidebarSearch, matchesQuery } from "@/shared/admin/sidebar/SidebarParts";
+import { SIDEBAR_ROOT_CLASS } from "@/shared/admin/sidebar/sidebarTheme";
 
 function cn(...inputs) {
   return twMerge(clsx(inputs));
@@ -345,7 +347,7 @@ const SidebarItem = ({ icon, label, path, isCollapsed, sidebarTextColor, unreadC
     end
     className={({ isActive }) =>
       cn(
-        "group flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-300 relative",
+        "group flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all duration-300 relative",
         // The current page inverts to a dark pill -- the strongest mark in the rail,
         // and the same one the Food panel uses. Hover is a flat warm tint and resting
         // is transparent, so the three states stay clearly ranked.
@@ -355,8 +357,8 @@ const SidebarItem = ({ icon, label, path, isCollapsed, sidebarTextColor, unreadC
       )
     }
   >
-    {React.createElement(icon, { size: 18, className: 'shrink-0' })}
-    {!isCollapsed && <span className="min-w-0 flex-1 text-[14px] font-bold tracking-tight">{label}</span>}
+    {React.createElement(icon, { size: 16, className: 'shrink-0' })}
+    {!isCollapsed && <span className="min-w-0 flex-1 text-sm font-semibold">{label}</span>}
     {!isCollapsed && (
       <SidebarBadge count={unreadCount} />
     )}
@@ -394,7 +396,7 @@ const SidebarGroup = ({
         type="button"
         onClick={toggleGroup}
         className={cn(
-          "group w-full flex items-center justify-between px-4 py-2.5 rounded-xl transition-all duration-300",
+          "group w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-all duration-300",
           // A raised chip, not the dark pill. This fires on merely *expanded* as well
           // as active, so inverting it would paint a big black block for any group the
           // operator opened, competing with the one item that is actually current.
@@ -407,10 +409,10 @@ const SidebarGroup = ({
       >
         <div className="flex min-w-0 items-center gap-3">
           {React.createElement(icon, {
-            size: 18,
+            size: 16,
             className: 'shrink-0',
           })}
-          {!isCollapsed && <span className="truncate text-[14px] font-bold tracking-tight">{label}</span>}
+          {!isCollapsed && <span className="truncate text-sm font-semibold">{label}</span>}
         </div>
         {!isCollapsed && (
           <div className="ml-3 flex items-center gap-2">
@@ -443,7 +445,7 @@ const SidebarGroup = ({
                 end
                 className={({ isActive: childActive }) =>
                   cn(
-                    "flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium transition-all duration-300",
+                    "flex items-center gap-3 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all duration-300",
                     childActive
                       ? "bg-[var(--sb-active-bg)] text-[var(--sb-active-ink)] font-semibold"
                       : "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink)] hover:bg-[var(--sb-hover)]"
@@ -1105,6 +1107,21 @@ const AdminLayout = () => {
     () => filterSidebarSectionsByAccess(adminSections, adminProfile),
     [adminProfile, adminSections],
   );
+  // Menu search in the rail (the same box every panel has): keep items whose label,
+  // or a nested item's label, matches.
+  const [sidebarQuery, setSidebarQuery] = useState('');
+  const visibleSidebarSections = useMemo(() => {
+    if (!sidebarQuery.trim()) return sidebarSections;
+    const keep = (item) => {
+      if (matchesQuery(sidebarQuery, item.label)) return item;
+      if (!item.subItems) return null;
+      const subItems = item.subItems.map(keep).filter(Boolean);
+      return subItems.length ? { ...item, subItems } : null;
+    };
+    return sidebarSections
+      .map((section) => ({ ...section, items: section.items.map(keep).filter(Boolean) }))
+      .filter((section) => section.items.length);
+  }, [sidebarQuery, sidebarSections]);
   const unreadCountsByPath = useMemo(
     () => ({
       '/taxi/admin/chat': chatUnreadCount,
@@ -1433,191 +1450,41 @@ const AdminLayout = () => {
         //
         // The active state inverts to a dark pill. On a light ground a lightly tinted
         // fill is easy to miss, and this rail has a lot of destinations to scan.
-        style={{
-          '--sb-surface': '#F7F9FD',
-          '--sb-surface-raised': '#FFFFFF',
-          '--sb-border': '#E2E8F3',
-          '--sb-hover': '#FFF1E3',
-          '--sb-ink': '#0B1B3F',
-          // Warm grey-brown, ~9:1 on --sb-surface.
-          '--sb-ink-soft': '#33415C',
-          // Section labels, inactive icons and bullets. ~5.1:1 -- past AA.
-          '--sb-ink-faint': '#5A6680',
-          '--sb-active-bg': '#0B2A6F',
-          '--sb-active-ink': '#FFFFFF',
-        }}
+        // Palette: shared admin sidebar tokens (shared/admin/sidebar/sidebarTheme.js).
         className={cn(
+          SIDEBAR_ROOT_CLASS,
           "relative z-50 flex h-screen flex-col overflow-hidden transition-all duration-300 ease-in-out bg-[var(--sb-surface)] border-r border-[var(--sb-border)]",
           isCollapsed ? 'w-20' : 'w-80',
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
       >
+        <SidebarStyles />
         <div className="flex h-full flex-col">
-          {/* Header with Logo and Brand */}
-          <div className="shrink-0 px-3 py-3 border-b border-[var(--sb-border)] bg-[var(--sb-surface-raised)]">
-            <div className="flex items-center justify-between mb-3">
-              {!isCollapsed && (
-                <div className="flex items-center gap-3.5">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--sb-border)] bg-[var(--sb-hover)] p-1 transition-all">
-                    <img src={cachedLogo || settings?.logos?.admin || settings?.logos?.landing} alt={taxiTitle} className="h-9 w-9 object-contain" />
-                  </div>
-                  <div className="flex flex-col">
-                    <h3 className="text-[15px] font-extrabold leading-tight text-[var(--sb-ink)] tracking-tight">
-                      {taxiTitle}
-                    </h3>
-                    <div className="mt-1 flex items-center gap-1.5">
-                      {/* emerald-600 rather than 500: the lighter shade was chosen to
-                          glow on a near-black rail and sits at roughly 2.3:1 on this
-                          one. The outward glow goes with it -- on a light ground it
-                          reads as a smudge rather than a light source. */}
-                      <div className="h-1.5 w-1.5 rounded-full bg-emerald-600 animate-pulse" />
-                      <span className="text-[11px] font-bold uppercase tracking-widest text-[var(--sb-ink-faint)]">
-                        {restrictedAdmin ? "Sub-admin" : "System Admin"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-              {isCollapsed && (
-                <div className="w-full flex items-center justify-center">
-                  <div className="w-10 h-10 rounded-lg bg-[var(--sb-hover)] flex items-center justify-center ring-1 ring-[var(--sb-border)]">
-                    <img src={cachedLogo || settings?.logos?.admin || settings?.logos?.landing} alt={taxiTitle} className="w-8 h-8 object-contain" />
-                  </div>
-                </div>
-              )}
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setCollapsed((current) => !current)}
-                  className="text-[var(--sb-ink-soft)] hover:text-[var(--sb-ink)] transition-all duration-200 hover:scale-110 p-1.5 rounded-lg hover:bg-[var(--sb-hover)]"
-                  title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-                >
-                  {isCollapsed ? (
-                    <ChevronRight className="w-4 h-4" />
-                  ) : (
-                    <ChevronLeft className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
-            </div>
+          {/* Header, panel switcher and search: shared by every admin panel. */}
+          <SidebarHeader
+            title={taxiTitle}
+            logoSrc={cachedLogo || settings?.logos?.admin || settings?.logos?.landing || quickSpicyLogo}
+            roleLabel={restrictedAdmin ? "Sub-admin" : "System Admin"}
+            collapsed={isCollapsed}
+            onToggleCollapse={() => setCollapsed((current) => !current)}
+          >
+            <PanelSwitcher active="taxi" />
+            <SidebarSearch value={sidebarQuery} onChange={setSidebarQuery} />
+          </SidebarHeader>
 
-            {/* Admin Panel Label */}
-            {!isCollapsed && (
-              <div className="mb-3">
-                <h2 className="text-sm font-semibold text-[var(--sb-ink-soft)] uppercase tracking-wider text-left">
-                  Admin Panel
-                </h2>
-              </div>
+          <nav className="admin-sidebar-scroll flex-1 min-h-0 space-y-4 overflow-y-auto overscroll-y-contain px-3 py-3 pb-12">
+            {visibleSidebarSections.length === 0 && sidebarQuery.trim() && (
+              <p className="px-3 py-10 text-sm font-medium text-[var(--sb-ink-soft)]">No menu items found</p>
             )}
-
-            {/* Module Switcher Tabs */}
-            {!isCollapsed && (
-              <div className="grid grid-cols-4 gap-1 p-1.5 bg-[var(--sb-surface-raised)] backdrop-blur-sm rounded-xl mb-1 border border-[var(--sb-border)] shadow-inner">
-                {/* Master: the cross-module engine, same screens from every panel.
-                    Shown when this admin can open at least one of them, and it
-                    opens on the first one they may. */}
-                {masterEntry && <button
-                  type="button"
-                  onClick={() => navigate(masterEntry)}
-                  className={cn(
-                    "w-full min-w-0 flex flex-col items-center justify-center gap-1.5 px-1 py-2.5 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
-                    "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
-                  )}
-                >
-                  <SlidersHorizontal className="w-4 h-4 text-[var(--sb-ink-faint)]" />
-                  Master
-                </button>}
-                {showPanel("food") && <button
-                  type="button"
-                  onClick={() => navigate("/admin/food")}
-                  className={cn(
-                    "w-full min-w-0 flex flex-col items-center justify-center gap-1.5 px-1 py-2.5 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
-                    "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
-                  )}
-                >
-                  <UtensilsCrossed className="w-4 h-4 text-[var(--sb-ink-faint)]" />
-                  Food
-                </button>}
-                <button
-                  type="button"
-                  onClick={() => navigate("/taxi/admin/dashboard")}
-                  className={cn(
-                    "w-full min-w-0 flex flex-col items-center justify-center gap-1.5 px-1 py-2.5 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
-                    // Was bg-white/text-black, which marked the current module only
-                    // because the strip behind it was dark. On a light strip that is
-                    // the least distinguishable fill available, so the active tab
-                    // inverts to the dark pill the rest of the rail uses for "current".
-                    "bg-[var(--sb-active-bg)] text-[var(--sb-active-ink)] shadow-[0_2px_8px_rgba(26,26,26,0.18)]"
-                  )}
-                >
-                  <Truck className="w-4 h-4 text-[var(--sb-active-ink)]" />
-                  Taxi
-                </button>
-                {/* Services: per site (config/features.js), the same flag that
-                    gates the /admin/sp route. */}
-                {SERVICE_PROVIDER_ENABLED && showPanel("serviceProvider") && <button
-                  type="button"
-                  onClick={() => navigate("/admin/sp/dashboard")}
-                  className={cn(
-                    "w-full min-w-0 flex flex-col items-center justify-center gap-1.5 px-1 py-2.5 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
-                    "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
-                  )}
-                >
-                  <Wrench className="w-4 h-4 text-[var(--sb-ink-faint)]" />
-                  Services
-                </button>}
-                {showPanel("quickCommerce") && <button
-                  type="button"
-                  onClick={() => navigate("/admin/quick-commerce")}
-                  className={cn(
-                    "w-full min-w-0 flex flex-col items-center justify-center gap-1.5 px-1 py-2.5 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
-                    "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
-                  )}
-                >
-                  <ShoppingBasket className="w-4 h-4 text-[var(--sb-ink-faint)]" />
-                  Quick
-                </button>}
-                {/* Medical sits beside Quick in every panel's switcher; it was only
-                    added to the food one, so it vanished on the way here. */}
-                {showPanel("medical") && <button
-                  type="button"
-                  onClick={() => navigate("/admin/medical")}
-                  className={cn(
-                    "w-full min-w-0 flex flex-col items-center justify-center gap-1.5 px-1 py-2.5 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
-                    "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
-                  )}
-                >
-                  <Pill className="w-4 h-4 text-[var(--sb-ink-faint)]" />
-                  Medical
-                </button>}
-                {/* Hotel: per site (config/features.js), the same flag that
-                    gates the /admin/hotel route. */}
-                {HOTEL_ENABLED && showPanel("hotel") && <button
-                  type="button"
-                  onClick={() => navigate("/admin/hotel/dashboard")}
-                  className={cn(
-                    "w-full min-w-0 flex flex-col items-center justify-center gap-1.5 px-1 py-2.5 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
-                    "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
-                  )}
-                >
-                  <BedDouble className="w-4 h-4 text-[var(--sb-ink-faint)]" />
-                  Hotel
-                </button>}
-              </div>
-            )}
-          </div>
-
-          <nav className="no-scrollbar mt-0 flex-1 space-y-8 overflow-y-auto px-4 pb-12 scroll-smooth">
-            {sidebarSections.map((section) => (
+            {visibleSidebarSections.map((section) => (
               <div key={section.title} className="space-y-1">
                 {!isCollapsed && (
-                  <div className="px-4 mb-4 flex items-center gap-2">
+                  <div className="px-3 py-2 mb-1">
                     {/* The accent bar and label were white-on-near-black. The dark:
                         variant is dropped with them: this rail is light in both
                         schemes now, so a slate-900 bar would have been an invisible
                         bar fighting the default. */}
-                    <div className="h-3 w-1 rounded-full bg-[var(--sb-ink-faint)]" />
-                    <span className="text-[12px] font-black uppercase tracking-widest text-[var(--sb-ink-faint)]">
+                    <span className="text-sm font-bold uppercase tracking-wider text-[var(--sb-ink-faint)]">
                       {section.title}
                     </span>
                   </div>
@@ -1627,7 +1494,7 @@ const AdminLayout = () => {
                     <SidebarGroup
                       key={item.label}
                       {...item}
-                      forceOpen={mode === OWNER_MODE}
+                      forceOpen={mode === OWNER_MODE || Boolean(sidebarQuery.trim())}
                       isCollapsed={isCollapsed}
                       pathname={location.pathname}
                       groupKey={`${section.title}:${item.label}`}

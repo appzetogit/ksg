@@ -28,6 +28,8 @@ import { useAdminAccess, hasPanel, canOpenPath } from "@food/utils/adminAccess";
 import { SERVICE_PROVIDER_ENABLED } from "@/config/features";
 import { hotelResourceForPath, readAdminProfile, useHotelAccess } from "../hotelAccess";
 import { cx } from "./ui";
+import { SidebarStyles, SidebarHeader, PanelSwitcher, SidebarSearch, matchesQuery } from "@/shared/admin/sidebar/SidebarParts";
+import { SIDEBAR_ROOT_CLASS } from "@/shared/admin/sidebar/sidebarTheme";
 
 /*
  * Hotel admin chrome: own sidebar + header, mounted outside master's AdminLayout
@@ -75,47 +77,10 @@ const TITLES = [
   ["/admin/hotel/dashboard", "Dashboard"],
 ];
 
-function PanelSwitcher() {
-  const navigate = useNavigate();
-  const access = useAdminAccess();
-  const show = (service) => hasPanel(access, service);
-  const masterEntry = ["/admin/master/settings", "/admin/master/admins"].find((p) => canOpenPath(access, p)) || null;
-
-  const tabs = [
-    masterEntry && { key: "master", label: "Master", icon: SlidersHorizontal, to: masterEntry },
-    show("food") && { key: "food", label: "Food", icon: UtensilsCrossed, to: "/admin/food" },
-    show("taxi") && { key: "taxi", label: "Taxi", icon: Truck, to: "/taxi/admin/dashboard" },
-    SERVICE_PROVIDER_ENABLED && show("serviceProvider") && { key: "sp", label: "Services", icon: Wrench, to: "/admin/sp/dashboard" },
-    show("quickCommerce") && { key: "qc", label: "Quick", icon: ShoppingBasket, to: "/admin/quick-commerce" },
-    show("medical") && { key: "medical", label: "Medical", icon: Pill, to: "/admin/medical" },
-    { key: "hotel", label: "Hotel", icon: BedDouble, to: "/admin/hotel/dashboard", active: true },
-  ].filter(Boolean);
-
-  return (
-    <div className="grid grid-cols-4 gap-1 rounded-xl border border-[var(--ha-border)] bg-white p-1.5 shadow-inner">
-      {tabs.map(({ key, label, icon: Icon, to, active }) => (
-        <button
-          key={key}
-          type="button"
-          onClick={() => navigate(to)}
-          className={cx(
-            "flex w-full min-w-0 flex-col items-center justify-center gap-1.5 rounded-lg px-1 py-2.5 text-[11px] font-bold leading-none transition-all duration-300",
-            active
-              ? "bg-[var(--ha-navy)] text-white shadow-[0_2px_8px_rgba(26,26,26,0.18)]"
-              : "text-[var(--ha-ink-faint)] hover:bg-[var(--ha-hover)] hover:text-[var(--ha-ink-soft)]",
-          )}
-        >
-          <Icon className="h-4 w-4" />
-          <span className="max-w-full truncate">{label}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function Sidebar({ open, onClose }) {
   const { canRead } = useHotelAccess();
-  const nav = NAV.filter((n) => canRead(n.resource));
+  const [query, setQuery] = useState("");
+  const nav = NAV.filter((n) => canRead(n.resource) && matchesQuery(query, n.label));
   return (
     <>
       <div
@@ -124,72 +89,47 @@ function Sidebar({ open, onClose }) {
       />
       <aside
         className={cx(
-          "fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-[var(--ha-border)] bg-[var(--ha-surface)] transition-transform duration-300 lg:translate-x-0",
+          SIDEBAR_ROOT_CLASS,
+          "fixed inset-y-0 left-0 z-50 flex w-80 flex-col overflow-hidden border-r border-[var(--sb-border)] bg-[var(--sb-surface)] transition-transform duration-300 lg:translate-x-0",
           open ? "translate-x-0" : "-translate-x-full",
         )}
       >
-        <div className="ha-tricolour h-1 shrink-0" />
-        <div className="shrink-0 border-b border-[var(--ha-border)] bg-white px-3 py-3">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--ha-border)] bg-[var(--ha-hover)] p-1">
-                <img src={quickSpicyLogo} alt="" className="h-9 w-9 object-contain" />
-              </div>
-              <div className="min-w-0">
-                <h3 className="truncate text-[15px] font-extrabold leading-tight tracking-tight text-[var(--ha-ink)]">KSG Hotels</h3>
-                <span className="text-[11px] font-bold uppercase tracking-widest text-[var(--ha-ink-faint)]">Admin</span>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg p-1.5 text-[var(--ha-ink-soft)] hover:bg-[var(--ha-hover)] lg:hidden"
-              aria-label="Close menu"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-[var(--ha-ink-soft)]">Admin Panel</h2>
-          <PanelSwitcher />
-        </div>
+        <SidebarStyles />
+        {/* Header, panel switcher and search: shared by every admin panel. */}
+        <SidebarHeader title="KSG Hotels" logoSrc={quickSpicyLogo} roleLabel="System Admin" onClose={onClose}>
+          <PanelSwitcher active="hotel" />
+          <SidebarSearch value={query} onChange={setQuery} />
+        </SidebarHeader>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          <p className="px-3 pb-1 pt-2 text-[11px] font-bold uppercase tracking-widest text-[var(--ha-ink-faint)]">Hotel</p>
-          {nav.map(({ to, label, icon: Icon, soon }) =>
-            soon ? (
-              <div
-                key={label}
-                aria-disabled="true"
-                title="Arrives with the booking phase"
-                className="flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-[var(--ha-ink-faint)] opacity-70"
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                <span className="flex-1">{label}</span>
-                <span className="rounded-full bg-[var(--ha-hover)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--ha-saffron)]">
-                  Soon
-                </span>
-              </div>
-            ) : (
+        <nav className="admin-sidebar-scroll flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-3 py-3">
+          <div className="px-3 py-2 mb-1">
+            <span className="text-sm font-bold uppercase tracking-wider text-[var(--sb-ink-faint)]">Hotel management</span>
+          </div>
+          {nav.length === 0 && query.trim() && (
+            <p className="px-3 py-10 text-sm font-medium text-[var(--sb-ink-soft)]">No menu items found</p>
+          )}
+          <div className="space-y-0.5">
+            {nav.map(({ to, label, icon: Icon }) => (
               <NavLink
                 key={to}
                 to={to}
                 onClick={onClose}
                 className={({ isActive }) =>
                   cx(
-                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
+                    "group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-semibold transition-all duration-300",
                     isActive
-                      ? "bg-[var(--ha-navy)] font-semibold text-white shadow-sm"
-                      : "text-[var(--ha-ink-soft)] hover:bg-[var(--ha-hover)] hover:text-[var(--ha-ink)]",
+                      ? "bg-[var(--sb-active-bg)] text-[var(--sb-active-ink)] shadow-sm"
+                      : "text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-ink)]",
                   )
                 }
               >
                 <Icon className="h-4 w-4 shrink-0" />
-                {label}
+                <span className="truncate">{label}</span>
               </NavLink>
-            ),
-          )}
+            ))}
+          </div>
         </nav>
-        <div className="shrink-0 border-t border-[var(--ha-border)] px-4 py-3 text-[11px] text-[var(--ha-ink-faint)]">
+        <div className="shrink-0 border-t border-[var(--sb-border)] px-4 py-3 text-[11px] text-[var(--sb-ink-faint)]">
           Users are managed in Master; Master › Coupons lists every service's coupons.
         </div>
       </aside>
@@ -300,7 +240,7 @@ export default function HotelAdminLayout() {
     <div className="hotel-admin min-h-screen bg-[var(--ha-surface)] text-[var(--ha-ink)]">
       <style>{THEME}</style>
       <Sidebar open={open} onClose={() => setOpen(false)} />
-      <div className="flex min-h-screen min-w-0 flex-col lg:pl-72">
+      <div className="flex min-h-screen min-w-0 flex-col lg:pl-80">
         <Header onMenu={() => setOpen(true)} />
         <main className="w-full min-w-0 flex-1 p-4 sm:p-6">
           <GatedOutlet />

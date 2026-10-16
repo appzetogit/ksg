@@ -27,6 +27,8 @@ import { getSettings } from "../../services/settingsService";
 import { getCachedSettings, loadBusinessSettings, normalizeCompanyName } from "@food/utils/businessSettings";
 import { useSettings } from "../../../../Taxi/shared/context/SettingsContext";
 import quickSpicyLogo from "@food/assets/ksg-logo.png";
+import { SidebarStyles, SidebarHeader, PanelSwitcher, SidebarSearch, matchesQuery } from "@/shared/admin/sidebar/SidebarParts";
+import { SIDEBAR_ROOT_CLASS } from "@/shared/admin/sidebar/sidebarTheme";
 
 // Icon mapping for menu items
 const iconMap = {
@@ -353,10 +355,10 @@ const AdminSidebar = ({ isOpen, onClose }) => {
         {/* Main Menu Item */}
         <div
           className={`
-            flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 cursor-pointer text-sm
+            flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer text-sm
             ${active
-              ? "bg-[#FF7A00] text-white font-semibold border border-[#FF7A00] shadow-sm"
-              : "text-blue-100/70 hover:text-white hover:bg-white/5"
+              ? "bg-[var(--sb-active-bg)] text-[var(--sb-active-ink)] font-semibold shadow-sm"
+              : "text-[var(--sb-ink-soft)] hover:text-[var(--sb-ink)] hover:bg-[var(--sb-hover)]"
             }
           `}
           onClick={() => {
@@ -367,7 +369,7 @@ const AdminSidebar = ({ isOpen, onClose }) => {
             }
           }}>
           <Icon
-            className={`text-lg flex-shrink-0 ${active ? "text-white" : "text-blue-100/70"
+            className={`w-4 h-4 flex-shrink-0 ${active ? "text-[var(--sb-active-ink)]" : "text-[var(--sb-ink-soft)]"
               }`}
           />
           <span className="font-semibold flex-1 text-sm">{item.title}</span>
@@ -398,7 +400,7 @@ const AdminSidebar = ({ isOpen, onClose }) => {
             <motion.div
               animate={{ rotate: isExpanded ? 180 : 0 }}
               transition={{ duration: 0.2 }}>
-              <ChevronDown className="text-blue-100/70 text-sm w-4 h-4" />
+              <ChevronDown className="text-[var(--sb-ink-faint)] w-4 h-4" />
             </motion.div>
           )}
         </div>
@@ -412,7 +414,7 @@ const AdminSidebar = ({ isOpen, onClose }) => {
               exit={{ height: 0, opacity: 0 }}
               transition={{ duration: 0.2 }}
               className="overflow-hidden">
-              <div className="ml-4 mt-1 pl-3 border-l border-white/10 space-y-1">
+              <div className="ml-5 mt-1 pl-3 border-l border-[var(--sb-border)] space-y-0.5">
                 {item.children.map((child, index) => {
                   const childRoute = getChildRoute(item.route, child);
                   const isChildActive =
@@ -427,10 +429,10 @@ const AdminSidebar = ({ isOpen, onClose }) => {
                         handleMenuItemClick(childRoute, item.title)
                       }
                       className={`
-                        px-3 py-2 text-xs rounded-lg transition-colors cursor-pointer flex justify-between items-center
+                        px-3 py-1.5 text-[13px] rounded-lg transition-colors cursor-pointer flex justify-between items-center
                         ${isChildActive
-                          ? "bg-[#FF7A00] text-white font-semibold"
-                          : "text-blue-100/70 hover:text-white hover:bg-white/5"
+                          ? "bg-[var(--sb-active-bg)] text-[var(--sb-active-ink)] font-semibold"
+                          : "text-[var(--sb-ink-soft)] hover:text-[var(--sb-ink)] hover:bg-[var(--sb-hover)]"
                         }
                       `}>
                       <span>{child}</span>
@@ -458,133 +460,39 @@ const AdminSidebar = ({ isOpen, onClose }) => {
   const { activeLogo, settings: appSettings } = useSettings() || {};
   const effectiveLogo = activeLogo || appSettings?.customization?.logos?.admin || appSettings?.logos?.admin || appSettings?.customization?.logos?.landing || logoUrl || quickSpicyLogo;
 
+  // Menu search (the same box every panel has).
+  const [menuQuery, setMenuQuery] = useState('');
+  const searchedMenu = menuQuery.trim()
+    ? filteredMenu.filter((item) => matchesQuery(menuQuery, item.title, ...(item.children || [])))
+    : filteredMenu;
+
   // Sidebar content
   const sidebarContent = (
-    <div className="h-full w-full flex flex-col bg-[#071A47] border-r border-white/10 overflow-hidden">
-      {/* Header Section */}
-      <div className="shrink-0 px-3 py-3 border-b border-white/10 bg-[#0B2A6F]">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-3.5">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-white/5 p-1 transition-all">
-              <img
-                src={effectiveLogo}
-                alt={servicesTitle}
-                className="h-9 w-9 object-contain"
-                onError={(e) => {
-                  if (e.target.src !== quickSpicyLogo) {
-                    e.target.src = quickSpicyLogo;
-                  }
-                }}
-              />
-            </div>
-            <div className="flex flex-col min-w-0">
-              <h3 className="text-[15px] font-extrabold leading-tight text-white tracking-tight truncate">
-                {servicesTitle}
-              </h3>
-              <div className="mt-1 flex items-center gap-1.5">
-                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
-                  {adminUser.role === 'super_admin' ? '⭐ Super Admin' : 'System Admin'}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Close Button - Mobile Only */}
-          <button
-            onClick={onClose}
-            className="p-1.5 hover:bg-white/5 rounded-lg transition-colors flex-shrink-0 lg:hidden text-neutral-300 hover:text-white"
-            aria-label="Close sidebar">
-            <FiX className="text-xl" />
-          </button>
-        </div>
-
-        {/* Admin Panel Label */}
-        <div className="mb-3">
-          <h2 className="text-sm font-semibold text-neutral-300 uppercase tracking-wider text-left">
-            Admin Panel
-          </h2>
-        </div>
-
-        {/* Platform module switcher */}
-        <div className="grid grid-cols-3 gap-1 p-1.5 bg-neutral-800/40 backdrop-blur-sm rounded-xl mb-1 border border-white/5 shadow-inner">
-          <button
-            type="button"
-            onClick={() => navigate("/admin/food")}
-            className="w-full min-w-0 flex flex-col items-center justify-center gap-1.5 px-1 py-2.5 text-[11px] leading-none font-bold rounded-lg transition-all duration-300 text-blue-100/70 hover:text-neutral-200 hover:bg-white/5">
-            <UtensilsCrossed className="w-4 h-4 text-neutral-500" />
-            Food
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate("/taxi/admin/dashboard")}
-            className="w-full min-w-0 flex flex-col items-center justify-center gap-1.5 px-1 py-2.5 text-[11px] leading-none font-bold rounded-lg transition-all duration-300 text-blue-100/70 hover:text-neutral-200 hover:bg-white/5">
-            <Truck className="w-4 h-4 text-neutral-500" />
-            Taxi
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate("/admin/sp/dashboard")}
-            className="w-full min-w-0 flex flex-col items-center justify-center gap-1.5 px-1 py-2.5 text-[11px] leading-none font-bold rounded-lg transition-all duration-300 bg-white text-black shadow-[0_4px_12px_rgba(255,255,255,0.15)]">
-            <Wrench className="w-4 h-4 text-black" />
-            Services
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate("/admin/quick-commerce")}
-            className="w-full min-w-0 flex flex-col items-center justify-center gap-1.5 px-1 py-2.5 text-[11px] leading-none font-bold rounded-lg transition-all duration-300 text-blue-100/70 hover:text-neutral-200 hover:bg-white/5">
-            <ShoppingBasket className="w-4 h-4 text-neutral-500" />
-            Quick
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate("/admin/medical")}
-            className="w-full min-w-0 flex flex-col items-center justify-center gap-1.5 px-1 py-2.5 text-[11px] leading-none font-bold rounded-lg transition-all duration-300 text-blue-100/70 hover:text-neutral-200 hover:bg-white/5">
-            <Pill className="w-4 h-4 text-neutral-500" />
-            Medical
-          </button>
-          {/* Hotel: per site (config/features.js) and per admin access. */}
-          {canOpenHotelPanel() && (
-          <button
-            type="button"
-            onClick={() => navigate("/admin/hotel/dashboard")}
-            className="w-full min-w-0 flex flex-col items-center justify-center gap-1.5 px-1 py-2.5 text-[11px] leading-none font-bold rounded-lg transition-all duration-300 text-blue-100/70 hover:text-neutral-200 hover:bg-white/5">
-            <BedDouble className="w-4 h-4 text-neutral-500" />
-            Hotel
-          </button>
-          )}
-        </div>
-      </div>
+    <div className={`${SIDEBAR_ROOT_CLASS} h-full w-full flex flex-col bg-[var(--sb-surface)] border-r border-[var(--sb-border)] overflow-hidden`}>
+      <SidebarStyles />
+      {/* Header, panel switcher and search: shared by every admin panel. */}
+      <SidebarHeader
+        title={servicesTitle}
+        logoSrc={effectiveLogo}
+        roleLabel={adminUser.role === 'super_admin' ? 'Super Admin' : 'System Admin'}
+        onClose={onClose}
+      >
+        <PanelSwitcher active="sp" />
+        <SidebarSearch value={menuQuery} onChange={setMenuQuery} />
+      </SidebarHeader>
 
       {/* Navigation Menu */}
-      <nav className="flex-1 overflow-y-auto p-3 admin-sidebar-scroll lg:pb-3 space-y-1">
-        {filteredMenu.map((item) => renderMenuItem(item))}
+      <nav className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-3 py-3 admin-sidebar-scroll space-y-0.5">
+        {searchedMenu.length === 0 && menuQuery.trim() && (
+          <p className="px-3 py-10 text-sm font-medium text-[var(--sb-ink-soft)]">No menu items found</p>
+        )}
+        {searchedMenu.map((item) => renderMenuItem(item))}
       </nav>
     </div>
   );
 
   return (
     <>
-      <style>{`
-        .admin-sidebar-scroll::-webkit-scrollbar {
-          width: 5px;
-        }
-        .admin-sidebar-scroll::-webkit-scrollbar-track {
-          background: rgba(17, 24, 39, 0.4);
-        }
-        .admin-sidebar-scroll::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.15);
-          border-radius: 4px;
-        }
-        .admin-sidebar-scroll::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.3);
-        }
-        .admin-sidebar-scroll {
-          scrollbar-width: thin;
-          scrollbar-color: rgba(255, 255, 255, 0.15) rgba(17, 24, 39, 0.4);
-        }
-      `}</style>
-
       {/* Mobile: Overlay Backdrop */}
       <AnimatePresence>
         {isOpen && (
