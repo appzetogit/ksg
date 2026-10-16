@@ -1512,7 +1512,7 @@ const AdminLayout = () => {
 
             {/* Module Switcher Tabs */}
             {!isCollapsed && (
-              <div className="flex p-1 bg-[var(--sb-surface-raised)] backdrop-blur-sm rounded-xl mb-1 border border-[var(--sb-border)] shadow-inner">
+              <div className="grid grid-cols-4 gap-1 p-1.5 bg-[var(--sb-surface-raised)] backdrop-blur-sm rounded-xl mb-1 border border-[var(--sb-border)] shadow-inner">
                 {/* Master: the cross-module engine, same screens from every panel.
                     Shown when this admin can open at least one of them, and it
                     opens on the first one they may. */}
@@ -1520,29 +1520,29 @@ const AdminLayout = () => {
                   type="button"
                   onClick={() => navigate(masterEntry)}
                   className={cn(
-                    "flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
+                    "w-full min-w-0 flex flex-col items-center justify-center gap-1.5 px-1 py-2.5 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
                     "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
                   )}
                 >
-                  <SlidersHorizontal className="w-3.5 h-3.5 text-[var(--sb-ink-faint)]" />
+                  <SlidersHorizontal className="w-4 h-4 text-[var(--sb-ink-faint)]" />
                   Master
                 </button>}
                 {showPanel("food") && <button
                   type="button"
                   onClick={() => navigate("/admin/food")}
                   className={cn(
-                    "flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
+                    "w-full min-w-0 flex flex-col items-center justify-center gap-1.5 px-1 py-2.5 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
                     "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
                   )}
                 >
-                  <UtensilsCrossed className="w-3.5 h-3.5 text-[var(--sb-ink-faint)]" />
+                  <UtensilsCrossed className="w-4 h-4 text-[var(--sb-ink-faint)]" />
                   Food
                 </button>}
                 <button
                   type="button"
                   onClick={() => navigate("/taxi/admin/dashboard")}
                   className={cn(
-                    "flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
+                    "w-full min-w-0 flex flex-col items-center justify-center gap-1.5 px-1 py-2.5 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
                     // Was bg-white/text-black, which marked the current module only
                     // because the strip behind it was dark. On a light strip that is
                     // the least distinguishable fill available, so the active tab
@@ -1550,7 +1550,7 @@ const AdminLayout = () => {
                     "bg-[var(--sb-active-bg)] text-[var(--sb-active-ink)] shadow-[0_2px_8px_rgba(26,26,26,0.18)]"
                   )}
                 >
-                  <Truck className="w-3.5 h-3.5 text-[var(--sb-active-ink)]" />
+                  <Truck className="w-4 h-4 text-[var(--sb-active-ink)]" />
                   Taxi
                 </button>
                 {/* Services: per site (config/features.js), the same flag that
@@ -1559,22 +1559,22 @@ const AdminLayout = () => {
                   type="button"
                   onClick={() => navigate("/admin/sp/dashboard")}
                   className={cn(
-                    "flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
+                    "w-full min-w-0 flex flex-col items-center justify-center gap-1.5 px-1 py-2.5 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
                     "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
                   )}
                 >
-                  <Wrench className="w-3.5 h-3.5 text-[var(--sb-ink-faint)]" />
+                  <Wrench className="w-4 h-4 text-[var(--sb-ink-faint)]" />
                   Services
                 </button>}
                 {showPanel("quickCommerce") && <button
                   type="button"
                   onClick={() => navigate("/admin/quick-commerce")}
                   className={cn(
-                    "flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
+                    "w-full min-w-0 flex flex-col items-center justify-center gap-1.5 px-1 py-2.5 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
                     "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
                   )}
                 >
-                  <ShoppingBasket className="w-3.5 h-3.5 text-[var(--sb-ink-faint)]" />
+                  <ShoppingBasket className="w-4 h-4 text-[var(--sb-ink-faint)]" />
                   Quick
                 </button>}
                 {/* Medical sits beside Quick in every panel's switcher; it was only
@@ -1583,11 +1583,11 @@ const AdminLayout = () => {
                   type="button"
                   onClick={() => navigate("/admin/medical")}
                   className={cn(
-                    "flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
+                    "w-full min-w-0 flex flex-col items-center justify-center gap-1.5 px-1 py-2.5 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
                     "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
                   )}
                 >
-                  <Pill className="w-3.5 h-3.5 text-[var(--sb-ink-faint)]" />
+                  <Pill className="w-4 h-4 text-[var(--sb-ink-faint)]" />
                   Medical
                 </button>}
                 {/* Hotel: per site (config/features.js), the same flag that
@@ -1596,11 +1596,11 @@ const AdminLayout = () => {
                   type="button"
                   onClick={() => navigate("/admin/hotel/dashboard")}
                   className={cn(
-                    "flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
+                    "w-full min-w-0 flex flex-col items-center justify-center gap-1.5 px-1 py-2.5 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
                     "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
                   )}
                 >
-                  <BedDouble className="w-3.5 h-3.5 text-[var(--sb-ink-faint)]" />
+                  <BedDouble className="w-4 h-4 text-[var(--sb-ink-faint)]" />
                   Hotel
                 </button>}
               </div>

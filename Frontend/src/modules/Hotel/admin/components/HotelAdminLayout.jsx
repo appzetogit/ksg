@@ -92,20 +92,20 @@ function PanelSwitcher() {
   ].filter(Boolean);
 
   return (
-    <div className="flex rounded-xl border border-[var(--ha-border)] bg-white p-1 shadow-inner">
+    <div className="grid grid-cols-4 gap-1 rounded-xl border border-[var(--ha-border)] bg-white p-1.5 shadow-inner">
       {tabs.map(({ key, label, icon: Icon, to, active }) => (
         <button
           key={key}
           type="button"
           onClick={() => navigate(to)}
           className={cx(
-            "flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg px-1 py-2 text-[11px] font-bold leading-none transition-all duration-300",
+            "flex w-full min-w-0 flex-col items-center justify-center gap-1.5 rounded-lg px-1 py-2.5 text-[11px] font-bold leading-none transition-all duration-300",
             active
               ? "bg-[var(--ha-navy)] text-white shadow-[0_2px_8px_rgba(26,26,26,0.18)]"
               : "text-[var(--ha-ink-faint)] hover:bg-[var(--ha-hover)] hover:text-[var(--ha-ink-soft)]",
           )}
         >
-          <Icon className="h-3.5 w-3.5" />
+          <Icon className="h-4 w-4" />
           <span className="max-w-full truncate">{label}</span>
         </button>
       ))}
