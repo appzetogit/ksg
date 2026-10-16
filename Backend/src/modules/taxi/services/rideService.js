@@ -31,6 +31,8 @@ import { SurgeSlot } from '../admin/models/SurgeSlot.js';
 import { RideInsurancePlan } from '../admin/models/RideInsurancePlan.js';
 import { availablePlans, insuranceSnapshot, planApplies } from '../common/rideInsurance.js';
 import { measureTrip, measureTripRoad } from '../common/tripMeasure.js';
+import { hubRef, resolveHubCharges, snapshotHub, sumHubLines } from '../common/transitHubCharges.js';
+import { findTripHubs } from './transitHubs.service.js';
 
 import { taxiReferralFor } from '../../../core/referral/referralSettings.service.js';
 import { TAXI_SPECIFIC_FIRST } from '../../../core/zones/zonePriority.js';
@@ -1000,6 +1002,61 @@ export const resolveRideSurge = ({ surgeZone, pricingRule, slots = [], vehicleTy
   return { amount, percent: 0, slotId: null, slotName: '' };
 };
 
+/*
+ * Transit hubs (airports, railway stations, bus stands) at the pickup / drop.
+ * docs/taxi-transit-hubs-contract.md; maths in common/transitHubCharges.js.
+ * Parcels are not charged hub fees.
+ */
+const resolveTripHubs = async ({ pickupPoint, dropPoint, transportType }) => {
+  if (transportType === 'delivery') return { pickupHub: null, dropHub: null };
+  return findTripHubs({ pickup: pickupPoint, drop: dropPoint });
+};
+
+const tripHubsRef = ({ pickupHub, dropHub }) => {
+  const hubs = {};
+  if (pickupHub) hubs.pickup = hubRef(snapshotHub(pickupHub));
+  if (dropHub) hubs.drop = hubRef(snapshotHub(dropHub));
+  return hubs;
+};
+
+/** The pass-through part of a ride's fare (hub fees + parking): the driver's in full. */
+export const rideHubPassThrough = (ride) => Math.round(Math.max(0, Number(ride?.hubPassThroughTotal || 0)) * 100) / 100;
+
+const minutesBetween = (from, to) => {
+  if (!from || !to) return 0;
+  const ms = new Date(to).getTime() - new Date(from).getTime();
+  return Number.isFinite(ms) ? Math.max(0, Math.ceil(ms / 60000)) : 0;
+};
+
+/*
+ * Re-prices a ride's hub lines from its booking-time snapshot with the actual
+ * wait (arrivedAt -> startedAt) for parking, and keeps ride.fare in step: it
+ * swaps the old pass-through total for the new one. Fees and surge stay as
+ * booked. A ride with no hub snapshot is left alone.
+ */
+const refreshRideHubCharges = (ride) => {
+  const snap = ride?.hubSnapshot;
+  if (!snap || (!snap.pickup && !snap.drop)) return;
+  const waited = ride.arrivedAt && ride.startedAt ? minutesBetween(ride.arrivedAt, ride.startedAt) : 0;
+  const repriced = resolveHubCharges({
+    pickupHub: snap.pickup || null,
+    dropHub: snap.drop || null,
+    vehicleTypeId: snap.vehicleTypeId || null,
+    at: snap.at ? new Date(snap.at) : (ride.createdAt || new Date()),
+    waitingMinutes: waited,
+    parkingAt: ride.arrivedAt || null,
+    fareBeforeSurge: Number(snap.fareBeforeSurge || 0),
+  });
+  const booked = (ride.hubCharges || []).map((line) => (line?.toObject ? line.toObject() : line));
+  const parking = repriced.filter((line) => line.code === 'hub_parking');
+  const lines = [...booked.filter((line) => line.code !== 'hub_parking'), ...parking];
+  const previous = rideHubPassThrough(ride);
+  const next = sumHubLines(lines, { passThrough: true });
+  ride.hubCharges = lines;
+  ride.hubPassThroughTotal = next;
+  ride.fare = roundRideMoney(Math.max(0, Number(ride.fare || 0) - previous + next));
+};
+
 /**
  * What the booking screen shows: the fare each ride type would be booked at for
  * this trip. Same zone, same price lookup (borrowing included) and the same
@@ -1040,6 +1097,9 @@ export const quoteRideFares = async ({
   const trip = await measureTripRoad({ pickup: pickupPoint, drop: dropPoint, stops });
   const distanceMeters = trip ? trip.distanceMeters : 0;
   const durationMinutes = trip ? trip.durationMinutes : 0;
+  const tripHubs = await resolveTripHubs({ pickupPoint, dropPoint, transportType });
+  const hubs = tripHubsRef(tripHubs);
+  const quotedAt = new Date();
 
   const ids = [...new Set(
     (Array.isArray(vehicleTypeIds) ? vehicleTypeIds : [vehicleTypeIds])
@@ -1058,8 +1118,15 @@ export const quoteRideFares = async ({
     const surge = base
       ? resolveRideSurge({ surgeZone, pricingRule, slots: surgeSlots, vehicleTypeId, fareBeforeSurge: base.fareBeforeSurge })
       : null;
+    // Hub lines: parking is a Rs 0 line marked estimated -- the wait is not
+    // known until the driver arrives; it is billed at completion.
+    const hubCharges = base && (tripHubs.pickupHub || tripHubs.dropHub)
+      ? resolveHubCharges({
+        ...tripHubs, vehicleTypeId, at: quotedAt, waitingMinutes: null, fareBeforeSurge: base.fareBeforeSurge,
+      })
+      : [];
     const fare = base
-      ? { ...computeRideFare({ pricingRule, transportType, distanceMeters, durationMinutes, surgeAmount: surge.amount, extraAmount: weightExtra }), surgePercent: surge.percent, surgeSlotName: surge.slotName }
+      ? { ...computeRideFare({ pricingRule, transportType, distanceMeters, durationMinutes, surgeAmount: surge.amount, extraAmount: weightExtra, hubCharges }), surgePercent: surge.percent, surgeSlotName: surge.slotName }
       : null;
     // The measured trip travels with the quote so the app can SHOW the same
     // distance it is being charged for. Without it the app displayed its own
@@ -1071,9 +1138,12 @@ export const quoteRideFares = async ({
       fare,
       // Plans the rider may add; `premium` is for this fare. Send the chosen id
       // as insurancePlanId when booking.
+      // Priced on the fare without the pass-through, as the booking prices it.
       insuranceOptions: fare
-        ? availablePlans(insurancePlans, { vehicleTypeId, zoneId: surgeZone?._id, fare: fare.total })
+        ? availablePlans(insurancePlans, { vehicleTypeId, zoneId: surgeZone?._id, fare: fare.total - fare.hubPassThroughTotal })
         : [],
+      hubCharges: fare ? fare.hubCharges : [],
+      hubs,
       measuredDistanceMeters: distanceMeters,
       measuredDurationMinutes: durationMinutes,
       distanceSource: trip ? (trip.source || 'straight_line') : 'unknown',
@@ -1357,7 +1427,46 @@ export const createRideRecord = async ({
     vehicleTypeId: primaryVehicleTypeId,
     fareBeforeSurge: safeFare,
   });
-  const rideSurgeAmount = rideSurge.amount;
+  /*
+   * Transit hubs at the pickup / drop, priced exactly as the quote prices
+   * them. The hub surge is ordinary surge (folded into rideSurgeAmount, so it
+   * is treated like zone surge everywhere after). The pass-through fees go on
+   * top of the agreed fare (ride.fare = agreed + hubPassThroughTotal) and are
+   * kept out of agreed_fare, bids, boosts, promos and insurance. Parking is a
+   * Rs 0 estimated line until completion.
+   */
+  const tripHubs = await resolveTripHubs({
+    pickupPoint,
+    dropPoint: normalizePoint(dropCoords, 'dropCoords'),
+    transportType: normalizedTransportType,
+  });
+  const hubPricedAt = normalizeScheduledAt(scheduledAt) || new Date();
+  const hubLines = (tripHubs.pickupHub || tripHubs.dropHub) && fareQuote
+    ? resolveHubCharges({
+      ...tripHubs,
+      vehicleTypeId: primaryVehicleTypeId,
+      at: hubPricedAt,
+      waitingMinutes: null,
+      fareBeforeSurge: safeFare,
+    })
+    : [];
+  const hubSurgeAmount = sumHubLines(hubLines, { passThrough: false });
+  const hubPassThroughTotal = sumHubLines(hubLines, { passThrough: true });
+  const hubFields = hubLines.length || tripHubs.pickupHub || tripHubs.dropHub
+    ? {
+      hubCharges: hubLines,
+      hubPassThroughTotal,
+      hubs: tripHubsRef(tripHubs),
+      hubSnapshot: {
+        at: hubPricedAt,
+        vehicleTypeId: primaryVehicleTypeId ? String(primaryVehicleTypeId) : null,
+        fareBeforeSurge: safeFare,
+        pickup: tripHubs.pickupHub ? snapshotHub(tripHubs.pickupHub) : null,
+        drop: tripHubs.dropHub ? snapshotHub(tripHubs.dropHub) : null,
+      },
+    }
+    : {};
+  const rideSurgeAmount = roundRideMoney(rideSurge.amount + hubSurgeAmount);
   const effectiveStartingFareWithoutSurge = pricingNegotiationMode === 'user_increment_only'
     ? effectiveUserMaxBidFare
     : safeFare;
@@ -1503,8 +1612,9 @@ export const createRideRecord = async ({
       pickupAddress: normalizeAddress(pickupAddress),
       dropLocation: toPoint(dropCoords, 'drop'),
       dropAddress: normalizeAddress(dropAddress),
-      fare: effectiveStartingFare,
+      fare: roundRideMoney(effectiveStartingFare + hubPassThroughTotal),
       baseFare: effectiveStartingFare,
+      ...hubFields,
       bookingMode: effectiveBookingMode,
       pricingNegotiationMode,
       biddingStatus: pricingNegotiationMode === 'driver_bid' ? 'open' : 'none',
@@ -1559,8 +1669,9 @@ export const createRideRecord = async ({
             pickupAddress: normalizeAddress(pickupAddress),
             dropLocation: toPoint(dropCoords, 'drop'),
             dropAddress: normalizeAddress(dropAddress),
-            fare: effectiveStartingFare,
+            fare: roundRideMoney(effectiveStartingFare + hubPassThroughTotal),
             baseFare: effectiveStartingFare,
+            ...hubFields,
             bookingMode: effectiveBookingMode,
             pricingNegotiationMode,
             biddingStatus: pricingNegotiationMode === 'driver_bid' ? 'open' : 'none',
@@ -1617,6 +1728,8 @@ export const createRideRecord = async ({
         'pricingSnapshot.promo_discount_applied',
         Math.max(0, Math.round((effectiveStartingFare - Number(rideDoc.fare || 0)) * 100) / 100),
       );
+      // The promo is off the ride fare only; hub fees ride on top, undiscounted.
+      rideDoc.fare = roundRideMoney(Number(rideDoc.fare || 0) + hubPassThroughTotal);
       await rideDoc.save({ session });
 
       await session.commitTransaction();
@@ -1706,6 +1819,21 @@ const populateRideRealtime = async (rideId) => {
   return ride;
 };
 
+// Contract hubCharges lines (docs/taxi-transit-hubs-contract.md).
+export const serializeHubCharges = (lines = []) => (Array.isArray(lines) ? lines : []).map((line) => {
+  const plain = line?.toObject ? line.toObject() : line;
+  return {
+    code: plain.code,
+    label: plain.label || '',
+    amount: Number(plain.amount || 0),
+    hubId: plain.hubId ? String(plain.hubId) : '',
+    hubName: plain.hubName || '',
+    hubType: plain.hubType || 'airport',
+    passThrough: Boolean(plain.passThrough),
+    ...(plain.estimated !== undefined && plain.estimated !== null ? { estimated: Boolean(plain.estimated) } : {}),
+  };
+});
+
 export const serializeRideRealtime = (ride) => ({
   rideId: String(ride._id),
   room: getRideRoom(ride._id),
@@ -1717,6 +1845,9 @@ export const serializeRideRealtime = (ride) => ({
   fare: ride.fare,
   baseFare: Number(ride.baseFare || ride.fare || 0),
   waitingChargeAmount: Number(ride.waitingChargeAmount || 0),
+  hubCharges: serializeHubCharges(ride.hubCharges),
+  hubPassThroughTotal: Number(ride.hubPassThroughTotal || 0),
+  hubs: ride.hubs || {},
   distanceChargeAmount: Number(ride.distanceChargeAmount || 0),
   timeChargeAmount: Number(ride.timeChargeAmount || 0),
   additionalCharge: Number(ride.additionalCharge || 0),
@@ -1995,6 +2126,9 @@ export const listRideHistoryForIdentity = async ({ role, entityId, limit = 50, p
       'cancellation_time',
       'recovered_cancellation_due',
       'insurance_fee',
+      'hubCharges',
+      'hubPassThroughTotal',
+      'hubs',
     ].join(' '))
     .sort({ createdAt: -1 })
     .skip((safePage - 1) * safeLimit)
@@ -2038,6 +2172,9 @@ export const listRideHistoryForIdentity = async ({ role, entityId, limit = 50, p
       commissionAmount: ride.commissionAmount,
       driverEarnings: ride.driverEarnings,
       waitingChargeAmount: Number(ride.waitingChargeAmount || 0),
+      hubCharges: serializeHubCharges(ride.hubCharges),
+      hubPassThroughTotal: Number(ride.hubPassThroughTotal || 0),
+      hubs: ride.hubs || {},
       distanceChargeAmount: Number(ride.distanceChargeAmount || 0),
       timeChargeAmount: Number(ride.timeChargeAmount || 0),
       additionalCharge: Number(ride.additionalCharge || 0),
@@ -2439,6 +2576,8 @@ export const updateRideLifecycle = async ({ rideId, driverId, nextStatus, paymen
   if (nextStatus === RIDE_LIVE_STATUS.STARTED) {
     // Shown on the driver's "on trip" screen, so it is set as the wait ends.
     ride.waitingChargeAmount = computeRideWaitingCharge(ride);
+    // Hub parking is billed from the same wait, and shown from here on.
+    refreshRideHubCharges(ride);
   }
 
   if (nextStatus === RIDE_LIVE_STATUS.COMPLETED) {
@@ -2493,7 +2632,13 @@ export const updateRideLifecycle = async ({ rideId, driverId, nextStatus, paymen
     // Ride insurance is charged now, on a ride that actually ran.
     const insuranceFee = roundRideMoney(Math.max(0, Number(ride.pricingSnapshot?.insurance?.premium || 0)));
     ride.insurance_fee = insuranceFee;
-    ride.fare = roundRideMoney(agreedFare + waitingCharge + adminAdditionalCharge + recoveredDue + insuranceFee);
+    /*
+     * Hub fees and parking (pass-through, the driver's in full): parking is
+     * recomputed from the actual wait using the rules frozen at booking.
+     */
+    refreshRideHubCharges(ride);
+    const hubPassThrough = rideHubPassThrough(ride);
+    ride.fare = roundRideMoney(agreedFare + waitingCharge + adminAdditionalCharge + recoveredDue + insuranceFee + hubPassThrough);
   }
 
   /*
@@ -2783,7 +2928,10 @@ export const increaseRideBidCeiling = async ({ rideId, userId, incrementSteps = 
     throw new ApiError(409, 'Fare can be increased after the waiting time completes');
   }
 
-  const currentFare = Math.max(0, Number(ride.fare || ride.baseFare || 0));
+  // The ride fare without the hub pass-through: boosts raise the fare, the
+  // gate / parking fees stay what they are.
+  const hubPassThrough = rideHubPassThrough(ride);
+  const currentFare = Math.max(0, Number(ride.fare || ride.baseFare || 0) - hubPassThrough);
   const maxAllowedFare = Math.max(currentFare, Number(ride.bidCeilingMaxFare || ride.userMaxBidFare || currentFare));
   if (currentFare >= maxAllowedFare) {
     throw new ApiError(409, 'Fare is already at the configured ceiling');
@@ -2801,7 +2949,7 @@ export const increaseRideBidCeiling = async ({ rideId, userId, incrementSteps = 
     },
     {
       $set: {
-        fare: nextFare,
+        fare: roundRideMoney(nextFare + hubPassThrough),
         userMaxBidFare: nextFare,
         // Billing reads the snapshot first (resolveAgreedFare), so a raise that
         // left it behind charged the rider the old fare and underpaid the driver
@@ -2887,14 +3035,16 @@ export const acceptRideBidAssignment = async ({ rideId, bidId, userId }) => {
       await ensureDriverWalletCanAcceptRide(driver, { session });
 
       ride.driverId = driver._id;
-      ride.fare = Number(bid.bidFare || ride.fare || 0);
+      const bidRideFare = Number(bid.bidFare || (Number(ride.fare || 0) - rideHubPassThrough(ride)) || 0);
+      // The bid prices the ride; hub fees ride on top of it.
+      ride.fare = roundRideMoney(bidRideFare + rideHubPassThrough(ride));
       /*
        * The accepted bid is now the price. Completion used to rebuild the fare
        * from starting_fare and so paid the driver the base fare instead of his
        * bid (or charged the rider more than the bid he accepted). A bid is its
        * own price, so no promo reduction applies to it.
        */
-      ride.set('pricingSnapshot.agreed_fare', ride.fare);
+      ride.set('pricingSnapshot.agreed_fare', bidRideFare);
       ride.set('pricingSnapshot.promo_discount_applied', 0);
       ride.acceptedBidId = bid._id;
       ride.status = RIDE_STATUS.ACCEPTED;

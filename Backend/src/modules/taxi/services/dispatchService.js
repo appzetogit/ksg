@@ -13,7 +13,7 @@ import {
   RIDE_STATUS,
 } from '../constants/index.js';
 import { Delivery } from '../user/models/Delivery.js';
-import { getRideRoom, resolveSetPriceForRide } from './rideService.js';
+import { getRideRoom, resolveSetPriceForRide, serializeHubCharges } from './rideService.js';
 import { SOCKET_EVENTS } from '../socket/events.js';
 import { resolveTransportDispatchConfig, getTransportRideSettings } from './transportSettingsService.js';
 import { sendPushNotificationToEntities } from './pushNotificationService.js';
@@ -56,7 +56,13 @@ const normalizeRideTransportType = (ride) => {
 };
 
 const computeCancellationFeeAmount = ({ ride, feeType, feeValue }) => {
-  const baseAmount = Math.max(roundMoney(ride?.fare || 0), roundMoney(ride?.baseFare || 0), 0);
+  // A percentage fee is on the ride fare, not on airport / station fees that
+  // were never incurred (ride.fare carries them as hubPassThroughTotal).
+  const baseAmount = Math.max(
+    roundMoney((ride?.fare || 0) - Math.max(0, Number(ride?.hubPassThroughTotal || 0))),
+    roundMoney(ride?.baseFare || 0),
+    0,
+  );
   const normalizedValue = Math.max(roundMoney(feeValue || 0), 0);
   const normalizedType = String(feeType || 'percentage').trim().toLowerCase();
 
@@ -263,7 +269,13 @@ export const settleUserCancellationFee = async (ride, session) => {
     };
   }
 
-  const baseAmount = Math.max(roundMoney(ride?.fare || 0), roundMoney(ride?.baseFare || 0), 0);
+  // A percentage fee is on the ride fare, not on airport / station fees that
+  // were never incurred (ride.fare carries them as hubPassThroughTotal).
+  const baseAmount = Math.max(
+    roundMoney((ride?.fare || 0) - Math.max(0, Number(ride?.hubPassThroughTotal || 0))),
+    roundMoney(ride?.baseFare || 0),
+    0,
+  );
   let computedFee = 0;
 
   const fixedFee = Number(pricing.fixed_cancellation_charge || 0);
@@ -580,6 +592,10 @@ const emitRideRequestToDrivers = async ({
       vehicleIconUrl: ride.vehicleIconUrl || '',
       fare: ride.fare,
       baseFare: Number(ride.baseFare || ride.fare || 0),
+      // Airport / station fees the driver collects and keeps (pass-through).
+      hubCharges: serializeHubCharges(ride.hubCharges),
+      hubPassThroughTotal: Number(ride.hubPassThroughTotal || 0),
+      hubs: ride.hubs || {},
       bookingMode: ride.bookingMode || 'normal',
       pricingNegotiationMode: ride.pricingNegotiationMode || 'none',
       biddingStatus: ride.biddingStatus || 'none',
@@ -1543,6 +1559,9 @@ export const notifyRideAccepted = async (ride) => {
     status: populatedRide.status,
     liveStatus: populatedRide.liveStatus,
     fare: populatedRide.fare,
+    hubCharges: serializeHubCharges(populatedRide.hubCharges),
+    hubPassThroughTotal: Number(populatedRide.hubPassThroughTotal || 0),
+    hubs: populatedRide.hubs || {},
     estimatedDistanceMeters: populatedRide.estimatedDistanceMeters || 0,
     estimatedDurationMinutes: populatedRide.estimatedDurationMinutes || 0,
     paymentMethod: populatedRide.paymentMethod,

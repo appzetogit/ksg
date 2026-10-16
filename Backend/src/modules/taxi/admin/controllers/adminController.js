@@ -874,8 +874,22 @@ export const deleteSurgeSlot = asyncHandler(async (req, res) => {
   ok(res, { deleted: true });
 });
 
-export const getAirports = asyncHandler(async (req, res) =>
-  ok(res, { airports: await adminService.listAirports(req.auth?.admin) }),
+// `airports` is what the existing admin page reads; items/total/page/limit
+// are the paginated shape (docs/taxi-transit-hubs-contract.md).
+export const getAirports = asyncHandler(async (req, res) => {
+  const { items, total, page, limit } = await adminService.listAirports(req.auth?.admin, {
+    type: req.query.type,
+    q: req.query.q,
+    page: req.query.page,
+    limit: req.query.limit,
+  });
+  ok(res, { airports: items, items, total, page, limit });
+});
+export const getAirportById = asyncHandler(async (req, res) =>
+  ok(res, await adminService.getAirport(req.params.id, req.auth?.admin)),
+);
+export const previewAirport = asyncHandler(async (req, res) =>
+  ok(res, await adminService.previewAirportCharges(req.params.id, req.body, req.auth?.admin)),
 );
 export const createAirport = asyncHandler(async (req, res) =>
   ok(res, await adminService.createAirport(req.body, req.auth?.admin)),

@@ -21,6 +21,7 @@ import {
   increaseRideBidCeiling,
   listRideBidsForUser,
   listRideHistoryForIdentity,
+  serializeHubCharges,
   serializeRideRealtime,
   submitRideFeedback,
   updateRideLifecycle,
@@ -569,6 +570,10 @@ export const updateRideStatus = async (req, res) => {
     waitingChargeAmount: ride.waitingChargeAmount || 0,
     distanceChargeAmount: ride.distanceChargeAmount || 0,
     timeChargeAmount: ride.timeChargeAmount || 0,
+    fare: ride.fare || 0,
+    hubCharges: serializeHubCharges(ride.hubCharges),
+    hubPassThroughTotal: Number(ride.hubPassThroughTotal || 0),
+    hubs: ride.hubs || {},
   };
 
   emitToRideRoom(ride._id, SOCKET_EVENTS.RIDE_STATUS_UPDATED, payload);

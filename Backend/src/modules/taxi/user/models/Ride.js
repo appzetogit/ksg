@@ -797,6 +797,45 @@ const rideSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    /*
+     * Transit-hub charges (airport / railway station / bus stand), see
+     * docs/taxi-transit-hubs-contract.md. hubCharges are the contract lines;
+     * hubPassThroughTotal is the part (fees + parking) that `fare` includes on
+     * top of the agreed fare and that goes to the driver in full. hubSnapshot
+     * freezes the hubs' rules at booking so an admin edit does not change a
+     * ride already under way (parking is recomputed from it at completion).
+     */
+    hubCharges: {
+      type: [
+        new mongoose.Schema(
+          {
+            code: { type: String, enum: ['hub_pickup_fee', 'hub_drop_fee', 'hub_parking', 'hub_surge'], required: true },
+            label: { type: String, default: '' },
+            amount: { type: Number, default: 0, min: 0 },
+            hubId: { type: String, default: '' },
+            hubName: { type: String, default: '' },
+            hubType: { type: String, default: 'airport' },
+            passThrough: { type: Boolean, default: true },
+            estimated: { type: Boolean, default: undefined },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
+    hubPassThroughTotal: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    hubs: {
+      type: mongoose.Schema.Types.Mixed,
+      default: undefined,
+    },
+    hubSnapshot: {
+      type: mongoose.Schema.Types.Mixed,
+      default: undefined,
+    },
     promo: {
       code: {
         type: String,

@@ -8,6 +8,29 @@ import { createDefaultBusinessSettings } from '../../admin/data/defaultBusinessS
 import { getReferralSettings, getReferralTranslationContent } from '../../admin/services/adminService.js';
 import { getPublicActivePaymentGateway } from '../../services/paymentGatewayService.js';
 import { LandingPageSetting } from '../../admin/models/LandingPageSetting.js';
+import { HUB_TYPES } from '../../admin/models/Airport.js';
+import { listNearbyHubs } from '../../services/transitHubs.service.js';
+import { ApiError } from '../../../../utils/ApiError.js';
+
+/*
+ * GET /common/transit-hubs?lat&lng&type&radiusKm -- active airports / railway
+ * stations / bus stands near a point, nearest first (rider shortcuts).
+ * docs/taxi-transit-hubs-contract.md.
+ */
+export const getNearbyTransitHubs = asyncHandler(async (req, res) => {
+  const lat = Number(req.query.lat);
+  const lng = Number(req.query.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180
+    || req.query.lat === undefined || req.query.lng === undefined) {
+    throw new ApiError(400, 'lat and lng are required');
+  }
+  const type = String(req.query.type || '').trim();
+  if (type && !HUB_TYPES.includes(type)) {
+    throw new ApiError(400, `type must be one of ${HUB_TYPES.join(', ')}`);
+  }
+  const items = await listNearbyHubs({ lat, lng, type: type || null, radiusKm: req.query.radiusKm, limit: req.query.limit });
+  res.json({ success: true, data: { items } });
+});
 
 /**
  * Common controller for shared utilities like file uploads
